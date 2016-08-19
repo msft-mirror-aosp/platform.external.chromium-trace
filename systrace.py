@@ -17,7 +17,7 @@ systrace_dir = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'catapult', 'systrace'))
 sys.path.insert(0, systrace_dir)
 
-from systrace import systrace
+from systrace import run_systrace
 
 if __name__ == '__main__':
-  sys.exit(systrace.main())
+  sys.exit(run_systrace.main())

@@ -26,8 +26,7 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
   # It is OK to have abstract methods. pylint: disable=abstract-method
 
   def __init__(self, platform_backend, supports_tab_control,
-               supports_extensions, browser_options, output_profile_path,
-               extensions_to_load):
+               supports_extensions, browser_options):
     super(ChromeBrowserBackend, self).__init__(
         platform_backend=platform_backend,
         supports_extensions=supports_extensions,
@@ -39,8 +38,8 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
     self._devtools_client = None
     self._system_info_backend = None
 
-    self._output_profile_path = output_profile_path
-    self._extensions_to_load = extensions_to_load
+    self._output_profile_path = browser_options.output_profile_path
+    self._extensions_to_load = browser_options.extensions_to_load
 
     if (self.browser_options.dont_override_profile and
         not options_for_unittests.AreSet()):
@@ -67,6 +66,9 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
     return [arg for arg in args if arg.startswith('--proxy-server=')]
 
   def GetBrowserStartupArgs(self):
+    assert not '--no-proxy-server' in self.browser_options.extra_browser_args, (
+        '--no-proxy-server flag is disallowed as Chrome needs to be route to '
+        'ts_proxy_server')
     args = []
     args.extend(self.browser_options.extra_browser_args)
     args.append('--enable-net-benchmarking')
@@ -80,11 +82,6 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
     # programmatically inspect a pageset's actions in order to determine if it
     # might eventually scroll.
     args.append('--enable-gpu-benchmarking')
-
-    # Set --no-proxy-server to work around some XP issues unless
-    # some other flag indicates a proxy is needed.
-    if not self._ArgsNeedProxyServer(args):
-      self.browser_options.no_proxy_server = True
 
     if self.browser_options.disable_background_networking:
       args.append('--disable-background-networking')
@@ -106,9 +103,6 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
     if len(component_extensions) > 0:
       args.append('--load-component-extension=%s' % component_extension_str)
 
-    if self.browser_options.no_proxy_server:
-      args.append('--no-proxy-server')
-
     if self.browser_options.disable_component_extensions_with_background_pages:
       args.append('--disable-component-extensions-with-background-pages')
 
@@ -117,9 +111,13 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
     if self.browser_options.disable_default_apps:
       args.append('--disable-default-apps')
 
-    if self.browser_options.enable_logging:
-      args.append('--enable-logging')
-      args.append('--v=1')
+    if (self.browser_options.logging_verbosity ==
+        self.browser_options.NON_VERBOSE_LOGGING):
+      args.extend(['--enable-logging', '--v=0'])
+    elif (self.browser_options.logging_verbosity ==
+          self.browser_options.VERBOSE_LOGGING):
+      args.extend(['--enable-logging', '--v=1'])
+
     return args
 
   def GetReplayBrowserStartupArgs(self):
@@ -238,22 +236,19 @@ class ChromeBrowserBackend(browser_backend.BrowserBackend):
   def supports_tracing(self):
     return True
 
-  def StartTracing(self, trace_options, custom_categories=None,
+  def StartTracing(self, trace_options,
                    timeout=web_contents.DEFAULT_WEB_CONTENTS_TIMEOUT):
     """
     Args:
         trace_options: An tracing_options.TracingOptions instance.
-        custom_categories: An optional string containing a list of
-                         comma separated categories that will be traced
-                         instead of the default category set.  Example: use
-                         "webkit,cc,disabled-by-default-cc.debug" to trace only
-                         those three event categories.
     """
-    return self.devtools_client.StartChromeTracing(
-        trace_options, custom_categories, timeout)
+    return self.devtools_client.StartChromeTracing(trace_options, timeout)
 
-  def StopTracing(self, trace_data_builder):
-    self.devtools_client.StopChromeTracing(trace_data_builder)
+  def StopTracing(self):
+    self.devtools_client.StopChromeTracing()
+
+  def CollectTracingData(self, trace_data_builder):
+    self.devtools_client.CollectChromeTracingData(trace_data_builder)
 
   def GetProcessName(self, cmd_line):
     """Returns a user-friendly name for the process of the given |cmd_line|."""
