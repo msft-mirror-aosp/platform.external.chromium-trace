@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from telemetry.core import util
+from telemetry.core import exceptions
 from telemetry import decorators
 from telemetry.internal.browser import browser as browser_module
 from telemetry.internal.browser import browser_finder
@@ -59,7 +60,6 @@ class BrowserTest(browser_test_case.BrowserTestCase):
     self._browser.tabs[0].WaitForDocumentReadyStateToBeInteractiveOrBetter()
 
   @decorators.Enabled('has tabs')
-  @decorators.Disabled('win')  # crbug.com/321527
   def testCloseReferencedTab(self):
     self._browser.tabs.New()
     tab = self._browser.tabs[0]
@@ -82,6 +82,16 @@ class BrowserTest(browser_test_case.BrowserTestCase):
     # other tab
     original_tab.Close()
     self.assertEqual(self._browser.foreground_tab, new_tab)
+
+  # This test uses the reference browser and doesn't have access to
+  # helper binaries like crashpad_database_util.
+  @decorators.Enabled('linux')
+  def testGetMinidumpPathOnCrash(self):
+    tab = self._browser.tabs[0]
+    with self.assertRaises(exceptions.AppCrashException):
+      tab.Navigate('chrome://crash', timeout=5)
+    crash_minidump_path = self._browser.GetMostRecentMinidumpPath()
+    self.assertIsNotNone(crash_minidump_path)
 
   def testGetSystemInfo(self):
     if not self._browser.supports_system_info:
@@ -113,7 +123,8 @@ class BrowserTest(browser_test_case.BrowserTestCase):
   def testGetSystemTotalMemory(self):
     self.assertTrue(self._browser.memory_stats['SystemTotalPhysicalMemory'] > 0)
 
-  @decorators.Disabled('win')  # crbug.com/570955.
+  @decorators.Disabled('cros-chrome-guest', 'system-guest',  # chromeos guest
+                       'chromeos')  # crbug.com/628836.
   def testIsTracingRunning(self):
     tracing_controller = self._browser.platform.tracing_controller
     if not tracing_controller.IsChromeTracingSupported():
@@ -154,7 +165,7 @@ class DirtyProfileBrowserTest(browser_test_case.BrowserTestCase):
 class BrowserLoggingTest(browser_test_case.BrowserTestCase):
   @classmethod
   def CustomizeBrowserOptions(cls, options):
-    options.enable_logging = True
+    options.logging_verbosity = options.VERBOSE_LOGGING
 
   @decorators.Disabled('chromeos', 'android')
   def testLogFileExist(self):
@@ -170,7 +181,7 @@ def _GenerateBrowserProfile(number_of_tabs):
   """
   profile_dir = tempfile.mkdtemp()
   options = options_for_unittests.GetCopy()
-  options.output_profile_path = profile_dir
+  options.browser_options.output_profile_path = profile_dir
   browser_to_create = browser_finder.FindBrowser(options)
   with browser_to_create.Create(options) as browser:
     browser.platform.SetHTTPServerDirectories(path.GetUnittestDataDir())
@@ -241,20 +252,6 @@ class BrowserRestoreSessionTest(unittest.TestCase):
   @classmethod
   def tearDownClass(cls):
     shutil.rmtree(cls._profile_dir)
-
-
-class ReferenceBrowserTest(unittest.TestCase):
-
-  @decorators.Enabled('win', 'mac', 'linux')
-  def testBasicBrowserActions(self):
-    options = options_for_unittests.GetCopy()
-    options.browser_type = 'reference'
-    browser_to_create = browser_finder.FindBrowser(options)
-    self.assertIsNotNone(browser_to_create)
-    with browser_to_create.Create(options) as ref_browser:
-      tab = ref_browser.tabs.New()
-      tab.Navigate('about:blank')
-      self.assertEquals(2, tab.EvaluateJavaScript('1 + 1'))
 
 
 class TestBrowserOperationDoNotLeakTempFiles(unittest.TestCase):

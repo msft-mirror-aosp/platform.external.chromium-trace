@@ -52,7 +52,10 @@ class FakeForwarderFactory(object):
     self.host_ip = FORWARDER_HOST_IP
 
   def Create(self, port_pairs):
-    return forwarders.Forwarder(port_pairs)
+    return forwarders.Forwarder(
+        forwarders.PortPairs(*[
+            forwarders.PortPair(p.local_port, p.remote_port or p.local_port)
+            if p else None for p in port_pairs]))
 
 
 class FakeReplayServer(object):
@@ -100,6 +103,7 @@ class TestNetworkControllerBackend(
     return self._platform_backend
 
 
+# pylint: disable=no-member
 class NetworkControllerBackendTest(unittest.TestCase):
   def Patch(self, *args, **kwargs):
     """Patch an object for the duration of a test, and return its mock."""
@@ -117,7 +121,7 @@ class NetworkControllerBackendTest(unittest.TestCase):
     # Always use our FakeReplayServer.
     FakeReplayServer.DEFAULT_PORTS = DEFAULT_PORTS  # Use global defaults.
     self.Patch(
-        'telemetry.internal.util.webpagereplay.ReplayServer', FakeReplayServer)
+        'telemetry.internal.util.wpr_server.ReplayServer', FakeReplayServer)
 
     # Pretend that only some predefined set of files exist.
     def fake_path_exists(filename):
