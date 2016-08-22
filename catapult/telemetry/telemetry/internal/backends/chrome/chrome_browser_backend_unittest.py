@@ -7,6 +7,7 @@ import mock
 
 from telemetry.internal import forwarders
 from telemetry.internal.backends.chrome import chrome_browser_backend
+from telemetry.internal.browser import browser_options as browser_options_module
 from telemetry.util import wpr_modes
 
 
@@ -25,18 +26,15 @@ class FakePlatformBackend(object):
     self.network_controller_backend.is_test_ca_installed = False
 
 
-class FakeBrowserOptions(object):
+class FakeBrowserOptions(browser_options_module.BrowserOptions):
   def __init__(self, wpr_mode=wpr_modes.WPR_OFF):
+    super(FakeBrowserOptions, self).__init__()
     self.wpr_mode = wpr_mode
     self.browser_type = 'chrome'
-    self.dont_override_profile = False
     self.browser_user_agent_type = 'desktop'
     self.disable_background_networking = False
     self.disable_component_extensions_with_background_pages = False
     self.disable_default_apps = False
-    self.extra_browser_args = []
-    self.no_proxy_server = False
-    self.enable_logging = False
 
 
 class TestChromeBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
@@ -46,30 +44,16 @@ class TestChromeBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
   def __init__(self, browser_options,
                wpr_http_device_port=None, wpr_https_device_port=None,
                is_running_locally=False):
+    browser_options.extensions_to_load = []
+    browser_options.output_profile_path = None
     super(TestChromeBrowserBackend, self).__init__(
         platform_backend=FakePlatformBackend(
             browser_options.wpr_mode != wpr_modes.WPR_OFF,
             wpr_http_device_port, wpr_https_device_port, is_running_locally),
         supports_tab_control=False,
         supports_extensions=False,
-        browser_options=browser_options,
-        output_profile_path=None,
-        extensions_to_load=[])
+        browser_options=browser_options)
 
-
-class StartupArgsTest(unittest.TestCase):
-  """Test expected inputs for GetBrowserStartupArgs."""
-
-  def testNoProxyServer(self):
-    browser_options = FakeBrowserOptions()
-    browser_options.no_proxy_server = False
-    browser_options.extra_browser_args = ['--proxy-server=http=inter.net']
-    browser_backend = TestChromeBrowserBackend(browser_options)
-    self.assertNotIn('--no-proxy-server',
-                     browser_backend.GetBrowserStartupArgs())
-
-    browser_options.no_proxy_server = True
-    self.assertIn('--no-proxy-server', browser_backend.GetBrowserStartupArgs())
 
 class ReplayStartupArgsTest(unittest.TestCase):
   """Test expected inputs for GetReplayBrowserStartupArgs."""
