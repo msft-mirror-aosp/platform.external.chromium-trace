@@ -39,6 +39,12 @@ class BrowserBackend(app_backend.AppBackend):
     # Specific browser backend is responsible for overriding this properly.
     raise NotImplementedError
 
+  def GetLogFileContents(self):
+    if not self.log_file_path:
+      return 'No log file'
+    with file(self.log_file_path) as f:
+      return f.read()
+
   def UploadLogsToCloudStorage(self):
     """ Uploading log files produce by this browser instance to cloud storage.
 
@@ -92,11 +98,14 @@ class BrowserBackend(app_backend.AppBackend):
   def supports_system_info(self):
     return False
 
-  def StartTracing(self, trace_options, custom_categories=None,
+  def StartTracing(self, trace_options,
                    timeout=web_contents.DEFAULT_WEB_CONTENTS_TIMEOUT):
     raise NotImplementedError()
 
-  def StopTracing(self, trace_data_builder):
+  def StopTracing(self):
+    raise NotImplementedError()
+
+  def CollectTracingData(self, trace_data_builder):
     raise NotImplementedError()
 
   def Start(self):
@@ -112,6 +121,18 @@ class BrowserBackend(app_backend.AppBackend):
     raise NotImplementedError()
 
   def GetStackTrace(self):
+    raise NotImplementedError()
+
+  def GetMostRecentMinidumpPath(self):
+    raise NotImplementedError()
+
+  def GetAllMinidumpPaths(self):
+    raise NotImplementedError()
+
+  def GetAllUnsymbolizedMinidumpPaths(self):
+    raise NotImplementedError()
+
+  def SymbolizeMinidump(self, minidump_path):
     raise NotImplementedError()
 
   def GetSystemInfo(self):

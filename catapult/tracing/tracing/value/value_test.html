@@ -15,72 +15,56 @@ found in the LICENSE file.
 
 tr.b.unittest.testSuite(function() {
   test('numericValueBasic', function() {
-    var canonicalUrl = 'my_test.json';
     var n = new tr.v.ScalarNumeric(tr.v.Unit.byName.sizeInBytes, 314);
-    var v = new tr.v.NumericValue(canonicalUrl, 'MyNumeric', n);
+    var v = new tr.v.NumericValue('MyNumeric', n);
+    assert.isDefined(v.guid);
     var d = v.asDict();
 
     var v2 = tr.v.Value.fromDict(d);
     assert.instanceOf(v2, tr.v.NumericValue);
+    assert.equal(v.guid, v2.guid);
     assert.equal(v.name, v2.name);
     assert.equal(v.numeric.value, v2.numeric.value);
-    assert.equal(v.canonicalUrl, v2.canonicalUrl);
-  });
-
-  test('dictValueBasic', function() {
-    var canonicalUrl = 'my_test.json';
-    var v = new tr.v.DictValue(canonicalUrl, 'MyDict', {my_key: 'my_value'});
-    var d = v.asDict();
-
-    var v2 = tr.v.Value.fromDict(d);
-    assert.instanceOf(v2, tr.v.DictValue);
-    assert.equal(v.groupingKeys.value_name, v2.groupingKeys.value_name);
-    assert.deepEqual(v.value, v2.value);
   });
 
   test('failureValueBasic', function() {
-    var canonicalUrl = 'my_test.json';
     var v = new tr.v.FailureValue(
-      canonicalUrl, 'MyFailure',
+      'MyFailure',
       {description: 'Description', stack: tr.b.stackTraceAsString()});
+    assert.isDefined(v.guid);
     var d = v.asDict();
 
     var v2 = tr.v.Value.fromDict(d);
     assert.instanceOf(v2, tr.v.FailureValue);
+    assert.equal(v.guid, v2.guid);
     assert.equal(v.name, v2.name);
     assert.equal(v.description, v2.description);
     assert.equal(v.stack, v2.stack);
-    assert.equal(v.diagnostics.canonical_url, v2.diagnostics.canonical_url);
   });
 
-  test('skipValueBasic', function() {
-    var canonicalUrl = 'my_test.json';
-    var v = new tr.v.SkipValue(canonicalUrl, 'MySkip',
-                               {description: 'WhySkipped'});
-    var d = v.asDict();
-
-    var v2 = tr.v.Value.fromDict(d);
-    assert.instanceOf(v2, tr.v.SkipValue);
-    assert.equal(v.groupingKeys.value_name, v2.groupingKeys.value_name);
-    assert.equal(v.description, v2.description);
-  });
-
-  test('addGroupingKey', function() {
-    var canonicalUrl = 'my_test.json';
-    var n = new tr.v.ScalarNumeric(tr.v.Unit.byName.sizeInBytes, 314);
-    var v = new tr.v.NumericValue(canonicalUrl, 'MyScalar', n);
-
-    v.addGroupingKey('foo', 'bar');
-    assert.equal(v.groupingKeys.foo, 'bar');
-  });
-
-  test('addDuplicateGroupingKeyThrows', function() {
-    var canonicalUrl = 'my_test.json';
-    var n = new tr.v.ScalarNumeric(tr.v.Unit.byName.sizeInBytes, 314);
-    var v = new tr.v.NumericValue(canonicalUrl, 'MyScalar', n);
-
-    assert.throws(function() { v.addGroupingKey('name', 'bar'); });
+  test('genericDiagnostic', function() {
+    var v0 = new tr.v.NumericValue('val',
+        tr.v.Numeric.buildFromSamples(tr.v.Unit.byName.count, [42]));
+    v0.diagnostics.add('foo', new tr.v.d.Generic({
+      t: true,
+      f: false,
+      z: 0,
+      o: 1,
+      ans: 0.42,
+      s: 'string',
+      a: [42.42, 'more string'],
+      d: {a: {b: 'c'}}
+    }));
+    var v1 = tr.v.Value.fromDict(v0.asDict());
+    var d = v1.diagnostics.get('foo');
+    assert.strictEqual(true, d.value.t);
+    assert.strictEqual(false, d.value.f);
+    assert.strictEqual(0, d.value.z);
+    assert.strictEqual(1, d.value.o);
+    assert.strictEqual(0.42, d.value.ans);
+    assert.strictEqual('string', d.value.s);
+    assert.deepEqual([42.42, 'more string'], d.value.a);
+    assert.deepEqual({a: {b: 'c'}}, d.value.d);
   });
 });
-
 </script>
