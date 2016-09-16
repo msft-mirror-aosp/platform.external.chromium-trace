@@ -21,51 +21,8 @@ from profile_chrome import ui
 from devil.android import device_utils
 
 
-_DEFAULT_CHROME_CATEGORIES = '_DEFAULT_CHROME_CATEGORIES'
-
-
-def _ComputeChromeCategories(options):
-  categories = []
-  if options.trace_frame_viewer:
-    categories.append('disabled-by-default-cc.debug')
-  if options.trace_ubercompositor:
-    categories.append('disabled-by-default-cc.debug*')
-  if options.trace_gpu:
-    categories.append('disabled-by-default-gpu.debug*')
-  if options.trace_flow:
-    categories.append('disabled-by-default-toplevel.flow')
-  if options.trace_memory:
-    categories.append('disabled-by-default-memory')
-  if options.trace_scheduler:
-    categories.append('disabled-by-default-blink.scheduler')
-    categories.append('disabled-by-default-cc.debug.scheduler')
-    categories.append('disabled-by-default-renderer.scheduler')
-  if options.chrome_categories:
-    categories += options.chrome_categories.split(',')
-  return categories
-
-
-def _ComputeAtraceCategories(options):
-  if not options.atrace_categories:
-    return []
-  return options.atrace_categories.split(',')
-
-
-def _ComputePerfCategories(options):
-  if not perf_tracing_agent.PerfProfilerAgent.IsSupported():
-    return []
-  if not options.perf_categories:
-    return []
-  return options.perf_categories.split(',')
-
-
-def _OptionalValueCallback(default_value):
-  def callback(option, _, __, parser):  # pylint: disable=unused-argument
-    value = default_value
-    if parser.rargs and not parser.rargs[0].startswith('-'):
-      value = parser.rargs.pop(0)
-    setattr(parser.values, option.dest, value)
-  return callback
+_PROFILE_CHROME_AGENT_MODULES = [chrome_tracing_agent, ddms_tracing_agent,
+                                 perf_tracing_agent, atrace_tracing_agent]
 
 
 def _CreateOptionParser():
@@ -78,7 +35,7 @@ def _CreateOptionParser():
   timed_options = optparse.OptionGroup(parser, 'Timed tracing')
   timed_options.add_option('-t', '--time', help='Profile for N seconds and '
                           'download the resulting trace.', metavar='N',
-                           type='float')
+                           type='float', dest='trace_time')
   parser.add_option_group(timed_options)
 
   cont_options = optparse.OptionGroup(parser, 'Continuous tracing')
@@ -89,53 +46,6 @@ def _CreateOptionParser():
                           'instead of appending events into one long trace.',
                           action='store_true')
   parser.add_option_group(cont_options)
-
-  chrome_opts = optparse.OptionGroup(parser, 'Chrome tracing options')
-  chrome_opts.add_option('-c', '--categories', help='Select Chrome tracing '
-                         'categories with comma-delimited wildcards, '
-                         'e.g., "*", "cat1*,-cat1a". Omit this option to trace '
-                         'Chrome\'s default categories. Chrome tracing can be '
-                         'disabled with "--categories=\'\'". Use "list" to '
-                         'see the available categories.',
-                         metavar='CHROME_CATEGORIES', dest='chrome_categories',
-                         default=_DEFAULT_CHROME_CATEGORIES)
-  chrome_opts.add_option('--trace-cc',
-                         help='Deprecated, use --trace-frame-viewer.',
-                         action='store_true')
-  chrome_opts.add_option('--trace-frame-viewer',
-                         help='Enable enough trace categories for '
-                         'compositor frame viewing.', action='store_true')
-  chrome_opts.add_option('--trace-ubercompositor',
-                         help='Enable enough trace categories for '
-                         'ubercompositor frame data.', action='store_true')
-  chrome_opts.add_option('--trace-gpu', help='Enable extra trace categories '
-                         'for GPU data.', action='store_true')
-  chrome_opts.add_option('--trace-flow', help='Enable extra trace categories '
-                         'for IPC message flows.', action='store_true')
-  chrome_opts.add_option('--trace-memory', help='Enable extra trace categories '
-                         'for memory profile. (tcmalloc required)',
-                         action='store_true')
-  chrome_opts.add_option('--trace-scheduler', help='Enable extra trace '
-                         'categories for scheduler state',
-                         action='store_true')
-  parser.add_option_group(chrome_opts)
-
-  parser.add_option_group(flags.AtraceOptions(parser))
-
-  if perf_tracing_agent.PerfProfilerAgent.IsSupported():
-    perf_opts = optparse.OptionGroup(parser, 'Perf profiling options')
-    perf_opts.add_option('-p', '--perf', help='Capture a perf profile with '
-                         'the chosen comma-delimited event categories. '
-                         'Samples CPU cycles by default. Use "list" to see '
-                         'the available sample types.', action='callback',
-                         default='', callback=_OptionalValueCallback('cycles'),
-                         metavar='PERF_CATEGORIES', dest='perf_categories')
-    parser.add_option_group(perf_opts)
-
-  ddms_options = optparse.OptionGroup(parser, 'Java tracing')
-  ddms_options.add_option('--ddms', help='Trace Java execution using DDMS '
-                          'sampling.', action='store_true')
-  parser.add_option_group(ddms_options)
 
   parser.add_option_group(flags.OutputOptions(parser))
 
@@ -151,7 +61,12 @@ def _CreateOptionParser():
   parser.add_option('-d', '--device', help='The Android device ID to use, '
                     'defaults to the value of ANDROID_SERIAL environment '
                     'variable. If not specified, only 0 or 1 connected '
-                    'devices are supported.')
+                    'devices are supported.', dest='device_serial_number')
+
+  # Add options from profile_chrome agents.
+  for module in _PROFILE_CHROME_AGENT_MODULES:
+    parser.add_option_group(module.add_options(parser))
+
   return parser
 
 
@@ -170,8 +85,24 @@ When in doubt, just try out --trace-frame-viewer.
   if options.verbose:
     logging.getLogger().setLevel(logging.DEBUG)
 
-  device = device_utils.DeviceUtils.HealthyDevices(device_arg=options.device)[0]
+  device = device_utils.DeviceUtils.HealthyDevices(device_arg=
+      options.device_serial_number)[0]
   package_info = profiler.GetSupportedBrowsers()[options.browser]
+
+  options.device = device
+  options.package_info = package_info
+
+  # Add options that are present in Systrace but not in profile_chrome (since
+  # they both use the same tracing controller).
+  # TODO(washingtonp): Once Systrace uses all of the profile_chrome agents,
+  # manually setting these options will no longer be necessary and should be
+  # removed.
+  options.list_categories = None
+  options.link_assets = None
+  options.asset_dir = None
+  options.timeout = None
+  options.collection_timeout = None
+  options.target = None
 
   if options.chrome_categories in ['list', 'help']:
     ui.PrintMessage('Collecting record categories list...', eol='')
@@ -203,54 +134,23 @@ When in doubt, just try out --trace-frame-viewer.
         perf_tracing_agent.PerfProfilerAgent.GetCategories(device)))
     return 0
 
-  if not options.time and not options.continuous:
+  if not options.trace_time and not options.continuous:
     ui.PrintMessage('Time interval or continuous tracing should be specified.')
     return 1
 
-  chrome_categories = _ComputeChromeCategories(options)
-  atrace_categories = _ComputeAtraceCategories(options)
-  perf_categories = _ComputePerfCategories(options)
-
-  if chrome_categories and 'webview' in atrace_categories:
+  if options.chrome_categories and 'webview' in options.atrace_categories:
     logging.warning('Using the "webview" category in atrace together with '
                     'Chrome tracing results in duplicate trace events.')
 
-  enabled_agents = []
-  if chrome_categories:
-    enabled_agents.append(
-        chrome_tracing_agent.ChromeTracingAgent(device,
-                                                package_info,
-                                                chrome_categories,
-                                                options.ring_buffer,
-                                                options.trace_memory))
-  if atrace_categories:
-    enabled_agents.append(
-        atrace_tracing_agent.AtraceAgent(device,
-                                         atrace_categories,
-                                         options.ring_buffer))
-
-  if perf_categories:
-    enabled_agents.append(
-        perf_tracing_agent.PerfProfilerAgent(device,
-                                             perf_categories))
-
-  if options.ddms:
-    enabled_agents.append(
-        ddms_tracing_agent.DdmsAgent(device,
-                                     package_info))
-
-  if not enabled_agents:
-    ui.PrintMessage('No trace categories enabled.')
-    return 1
-
-  if options.output:
-    options.output = os.path.expanduser(options.output)
+  if options.output_file:
+    options.output_file = os.path.expanduser(options.output_file)
   result = profiler.CaptureProfile(
-      enabled_agents,
-      options.time if not options.continuous else 0,
-      output=options.output,
+      options,
+      options.trace_time if not options.continuous else 0,
+      _PROFILE_CHROME_AGENT_MODULES,
+      output=options.output_file,
       compress=options.compress,
-      write_json=options.json)
+      write_json=options.write_json)
   if options.view:
     if sys.platform == 'darwin':
       os.system('/usr/bin/open %s' % os.path.abspath(result))
