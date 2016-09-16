@@ -61,25 +61,26 @@ tr.b.unittest.testSuite(function() {
     var subView = document.createElement('tr-ui-a-alert-sub-view');
     subView.selection = new tr.model.EventSet(alert);
     subView.tabLabel = 'Alerts';
+    subView.tabIcon = { text: '\u26A0', style: 'color: red;' };
 
     return subView;
   }
 
   test('instantiate_noTabs', function() {
-    var tabView = document.createElement('tr-ui-a-tab-view');
+    var tabView = document.createElement('tr-ui-b-tab-view');
     tabView.label = 'No items selected.';
     this.addHTMLOutput(tabView);
   });
 
   test('instantiate_oneTab', function() {
-    var tabView = document.createElement('tr-ui-a-tab-view');
+    var tabView = document.createElement('tr-ui-b-tab-view');
     tabView.label = '1 item selected.';
     tabView.addSubView(createPowerSampleSubView());
     this.addHTMLOutput(tabView);
   });
 
   test('instantiate_twoTabs', function() {
-    var tabView = document.createElement('tr-ui-a-tab-view');
+    var tabView = document.createElement('tr-ui-b-tab-view');
     tabView.label = '3 items selected.';
     tabView.addSubView(createPowerSampleSubView());
     tabView.addSubView(createAlertSubView());
@@ -87,7 +88,7 @@ tr.b.unittest.testSuite(function() {
   });
 
   test('clearSubViews_selectedSubViewNullAfter', function() {
-    var tabView = document.createElement('tr-ui-a-tab-view');
+    var tabView = document.createElement('tr-ui-b-tab-view');
     tabView.label = '3 items selected.';
     tabView.addSubView(createPowerSampleSubView());
     tabView.addSubView(createAlertSubView());

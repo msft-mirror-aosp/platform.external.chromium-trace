@@ -14,6 +14,7 @@ from telemetry.core import android_platform
 from telemetry.core import exceptions
 from telemetry.core import util
 from telemetry import decorators
+from telemetry.internal import forwarders
 from telemetry.internal.forwarders import android_forwarder
 from telemetry.internal.image_processing import video
 from telemetry.internal.platform import android_device
@@ -254,6 +255,10 @@ class AndroidPlatformBackend(
     for l in output:
       logging.info(l)
 
+  @decorators.Deprecated(
+      2017, 11, 4,
+      'Clients should use tracing and memory-infra in new Telemetry '
+      'benchmarks. See for context: https://crbug.com/632021')
   def GetMemoryStats(self, pid):
     memory_usage = self._device.GetMemoryUsageForPid(pid)
     if not memory_usage:
@@ -583,6 +588,9 @@ class AndroidPlatformBackend(
     self._device.RunShellCommand(
         ['sh', self._device_copy_script, source, dest])
 
+  def GetPortPairForForwarding(self, local_port):
+    return forwarders.PortPair(local_port=local_port, remote_port=0)
+
   def RemoveProfile(self, package, ignore_list):
     """Delete application profile on device.
 
@@ -741,9 +749,11 @@ class AndroidPlatformBackend(
     return self._IsScreenLocked(input_methods)
 
   def HasBattOrConnected(self):
-    # str(self.device) is the device id as a string.
-    return battor_wrapper.IsBattOrConnected(self.GetOSName(),
-                                            android_device=str(self.device))
+    # Use linux instead of Android because when determining what tests to run on
+    # a bot the individual device could be down, which would make BattOr tests
+    # not run on any device. BattOrs communicate with the host and not android
+    # devices.
+    return battor_wrapper.IsBattOrConnected('linux')
 
 
 def _FixPossibleAdbInstability():

@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import atexit
 import datetime
 import os
 import logging
@@ -13,7 +14,7 @@ import tempfile
 import time
 
 from battor import battor_error
-from catapult_base import cloud_storage
+from py_utils import cloud_storage
 import dependency_manager
 from devil.utils import battor_device_mapping
 from devil.utils import find_usb_devices
@@ -120,9 +121,20 @@ class BattorWrapper(object):
     self._trace_results = None
     self._serial_log_file = None
 
+    atexit.register(self.KillBattOrShell)
+
+  def KillBattOrShell(self):
+    if self._battor_shell:
+      logging.critical('BattOr shell was not properly closed. Killing now.')
+      self._battor_shell.kill()
+
   def GetShellReturnCode(self):
     """Gets the return code of the BattOr agent shell."""
-    return self._battor_shell.poll()
+    # TODO(rnephew): Get rid of logging after crbug.com/645106 is fixed.
+    logging.critical('Finding return code for BattOr shell.')
+    rc = self._battor_shell.poll()
+    logging.critical('Found return code: %s' % rc)
+    return rc
 
   def StartShell(self):
     """Start BattOr binary shell."""
