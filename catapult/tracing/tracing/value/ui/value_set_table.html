@@ -6,108 +6,138 @@ found in the LICENSE file.
 -->
 
 <link rel="import" href="/tracing/base/raf.html">
+<link rel="import" href="/tracing/base/unit.html">
+<link rel="import" href="/tracing/ui/base/grouping_table_groupby_picker.html">
 <link rel="import" href="/tracing/ui/base/table.html">
 <link rel="import" href="/tracing/value/ui/diagnostic_span.html">
 <link rel="import" href="/tracing/value/ui/histogram_span.html">
 <link rel="import" href="/tracing/value/ui/scalar_span.html">
-<link rel="import" href="/tracing/value/ui/value_set_view.html">
-<link rel="import" href="/tracing/value/unit.html">
+<link rel="import" href="/tracing/value/value_set.html">
 
 <dom-module id="tr-v-ui-value-set-table">
   <template>
     <style>
     :host {
-      display: flex;
-      flex-direction: column;
+      display: block;
     }
+
+    #container {
+      flex-direction: column;
+      display: none;
+    }
+
     table-container {
+      margin-top: 5px;
       display: flex;
       min-height: 0px;
       overflow-y: auto;
     }
-    div#error {
-      color: red;
-    }
+
     #histogram {
       display: none;
     }
+
+    #zero {
+      color: red;
+    }
+
     #search {
       max-width: 20em;
-      margin-top: 5px;
-      margin-bottom: 5px;
+      margin-right: 20px;
+    }
+
+    #controls {
+      white-space: nowrap;
+    }
+
+    #reference_column_container * {
+      margin-right: 20px;
     }
     </style>
 
-    <input id="search" placeholder="Find Value name">
-    <div>
-      <input type="checkbox" id="show_all">
-      <label for="show_all">Show all</label>
+    <div id="zero">zero values</div>
+
+    <div id="container">
+      <div id="controls">
+        <input id="search" placeholder="Find Histogram name" on-keyup="onSearch_">
+
+        <span id="reference_column_container"></span>
+
+        <input type="checkbox" id="show_all" on-change="onShowAllChange_" title="When unchecked, less important histograms are hidden.">
+        <label for="show_all" title="When unchecked, less important histograms are hidden.">Show all</label>
+      </div>
+
+      <tr-ui-b-grouping-table-groupby-picker id="picker">
+      </tr-ui-b-grouping-table-groupby-picker>
+
+      <table-container>
+        <tr-ui-b-table id="table"/>
+      </table-container>
+      <tr-v-ui-histogram-span id="histogram"/>
     </div>
-    <div id="error"></div>
-    <table-container>
-      <tr-ui-b-table id="table"></tr-ui-b-table>
-    </table-container>
-    <tr-v-ui-histogram-span id="histogram"></tr-v-ui-histogram-span>
   </template>
 </dom-module>
 
 <script>
 'use strict';
 tr.exportTo('tr.ui', function() {
-
   /**
-   * @param {!tr.v.Value} value
-   * @param {string} fieldName
-   * @param {*} defaultValue
-   * @return {*}
+   * Returns a closure that gets a story grouping key label from a Histogram.
+   *
+   * @param {string} storyGroupingKey
+   * @return {!function(tr.v.Histogram):string}
    */
-  function getIterationInfoField(value, fieldName, defaultValue) {
-    var iteration = tr.v.d.IterationInfo.getFromValue(value);
-    if (!(iteration instanceof tr.v.d.IterationInfo))
-      return defaultValue;
-    return iteration[fieldName];
+  function makeStoryGroupingKeyLabelGetter(storyGroupingKey) {
+    return v => tr.v.d.IterationInfo.getStoryGroupingKeyLabel(
+        v, storyGroupingKey);
   }
 
-  /**
-   * @param {!tr.v.Value} value
-   * @param {string} fieldName
-   * @return {string}
-   */
-  function getStoryGroupingKeyLabel(value, storyGroupingKey) {
-    var iteration = tr.v.d.IterationInfo.getFromValue(value);
-    if (!(iteration instanceof tr.v.d.IterationInfo))
-      return storyGroupingKey + ': undefined';
-    return storyGroupingKey + ': ' +
-      iteration.storyGroupingKeys[storyGroupingKey];
-  }
+  var getDisplayLabel = tr.v.ValueSet.GROUPINGS.DISPLAY_LABEL.dataFn;
 
-  /**
-   * @param {!tr.v.Value} value
-   * @return {string}
-   */
-  var getDisplayLabel = v => getIterationInfoField(v, 'displayLabel', 'Value');
+  var DEFAULT_POSSIBLE_GROUPS = [];
+  DEFAULT_POSSIBLE_GROUPS.push({
+    key: tr.v.ValueSet.GROUPINGS.HISTOGRAM_NAME.key,
+    label: tr.v.ValueSet.GROUPINGS.HISTOGRAM_NAME.label,
+    dataFn: v => v.shortName || v.name
+  });
+
+  tr.b.iterItems(tr.v.ValueSet.GROUPINGS, function(name, group) {
+    // DISPLAY_LABEL is used to define the columns, so don't allow grouping
+    // rows by it.
+    // Override HISTOGRAM_NAME so that we can display shortName.
+    if (group !== tr.v.ValueSet.GROUPINGS.DISPLAY_LABEL &&
+        group !== tr.v.ValueSet.GROUPINGS.HISTOGRAM_NAME)
+      DEFAULT_POSSIBLE_GROUPS.push(group);
+  });
 
   var SELECTED_VALUE_SETTINGS_KEY = 'tr-v-ui-value-set-table-value';
   var SHOW_ALL_SETTINGS_KEY = 'tr-v-ui-value-set-table-show-all';
+
+  var UNMERGEABLE = '(unmergeable)';
+
+  function mergeCells(a, b) {
+    if (a === UNMERGEABLE || b === UNMERGEABLE || !a || !b ||
+        !a.canAddHistogram(b))
+      return UNMERGEABLE;
+    a = a.clone();
+    a.addHistogram(b);
+    return a;
+  }
 
   /**
    * Recursively groups |values|.
    * TODO(benjhayden): Use ES6 Maps instead of dictionaries?
    *
-   * @param {!Array.<!tr.v.Value>} values
-   * @param {!Array.<!function(!tr.v.Value):(string|number)>} groupingCallbacks
-   * @return {!(Object|tr.v.Value)}
+   * @param {!Array.<!tr.v.Histogram>} values
+   * @param {!Array.<!function(!tr.v.Histogram):(string|number)>}
+   *   groupingCallbacks
+   * @return {!(Object|tr.v.Histogram)}
    */
   function organizeValues(values, groupingCallbacks, level) {
     if (groupingCallbacks.length === level) {
-      // Recursion base case: there should only be a single value when we've
-      // grouped by every possible grouping.
-      if (values.length > 1) {
-        console.warn('Multiple Values with same name, benchmarkName, ' +
-            'storyGroupingKeys, storyName, start, storysetRepeatCounter, ' +
-            'storyRepeatCounter, and displayLabel', values);
-      }
-      return values[0];
+      // Recursion base case! Merge all remaining values.
+      // Be careful to retain the clone() semantics instead of in-place merging.
+      return values.reduce(mergeCells);
     }
 
     // Group the values by the current grouping.
@@ -122,24 +152,12 @@ tr.exportTo('tr.ui', function() {
     }
 
     // Recursively group groupedValues.
-    return tr.b.mapItems(groupedValues, function(key, groupValues) {
-      return organizeValues(groupValues, groupingCallbacks, level + 1);
-    });
+    return tr.b.mapItems(groupedValues, (key, groupValues) => organizeValues(
+        groupValues, groupingCallbacks, level + 1));
   }
 
   Polymer({
     is: 'tr-v-ui-value-set-table',
-
-    /**
-     * Return true if this view supports this ValueSet.
-     * Value-set-table supports all possible metrics, so it always returns true.
-     *
-     * @param {!tr.v.ValueSet} values
-     * @return {boolean}
-     */
-    supportsValueSet: function(values) {
-      return true;
-    },
 
     /**
      * This can optionally depend on the ValueSet.
@@ -154,39 +172,71 @@ tr.exportTo('tr.ui', function() {
       // TODO(benjhayden): Should these all be ValueSets?
       /** @type {undefined|!tr.v.ValueSet} */
       this.values_ = undefined;
-      /** @type {!Array.<!tr.v.Value>} */
+      /** @type {!Array.<!tr.v.Histogram>} */
       this.sourceValues_ = [];
-      /** @type {!Object} */
-      this.summaryValuesByGuid_ = {};
 
       this.rows_ = undefined;
       this.columns_ = undefined;
+
+      this.updatingContents_ = false;
+      this.displayLabels_ = undefined;
+      this.referenceDisplayLabel_ = undefined;
     },
 
     ready: function() {
       this.$.table.selectionMode = tr.ui.b.TableFormat.SelectionMode.CELL;
       this.$.table.addEventListener('selection-changed',
           this.onSelectionChanged_.bind(this));
-      this.$.table.addEventListener('selected-column-changed',
-          this.onSelectedColumnChanged_.bind(this));
       this.addEventListener('requestSelectionChange',
           this.onRelatedValueSelected_.bind(this));
-      this.$.search.addEventListener('keyup', this.onSearch_.bind(this));
       this.$.show_all.checked = tr.b.Settings.get(SHOW_ALL_SETTINGS_KEY, false);
-      this.$.show_all.addEventListener('change',
-          this.onShowAllChange_.bind(this));
+      this.$.picker.settingsKey = 'tr-v-ui-value-set-table-groupby-picker';
+
+      this.$.picker.possibleGroups = DEFAULT_POSSIBLE_GROUPS.slice();
+      this.$.picker.defaultGroupKeys = [
+        tr.v.ValueSet.GROUPINGS.HISTOGRAM_NAME.key,
+        tr.v.ValueSet.GROUPINGS.STORY_NAME.key];
+      this.$.picker.addEventListener('current-groups-changed',
+                                     this.currentGroupsChanged_.bind(this));
+    },
+
+    set groupingKeys(keys) {
+      this.$.picker.currentGroupKeys = keys;
+    },
+
+    get groupingKeys() {
+      return this.$.picker.currentGroupKeys;
+    },
+
+    get possibleGroupingKeys() {
+      return this.$.picker.possibleGroups.map(g => g.key);
+    },
+
+    currentGroupsChanged_: function() {
+      if (this.updatingContents_)
+        return;
+
+      if (this.$.picker.currentGroups.length === 0 &&
+          this.possibleGroupingKeys.length > 0) {
+        this.$.picker.currentGroupKeys = [this.$.picker.possibleGroups[0].key];
+      }
+      // TODO(benjhayden): remember selected cells and column
+      var expansionStates = undefined;
+      if (this.rows_)
+        expansionStates = this.getExpansionStates_(this.rows_);
+      this.updateContents_();
+      if (expansionStates)
+        this.setExpansionStates_(expansionStates, this.rows_);
     },
 
     onShowAllChange_: function() {
-      tr.b.Settings.set(SHOW_ALL_SETTINGS_KEY, this.$.show_all.checked);
-      this.updateContents_();
-    },
+      if (this.updatingContents_)
+        return;
 
-    onSelectedColumnChanged_: function() {
-      // Force the table to rebuild the cell values without forgetting which
-      // rows were expanded.
+      tr.b.Settings.set(SHOW_ALL_SETTINGS_KEY, this.$.show_all.checked);
+      // TODO(benjhayden): remember selected cells and column
       var expansionStates = this.getExpansionStates_(this.rows_);
-      this.$.table.tableRows = this.rows_;
+      this.updateContents_();
       this.setExpansionStates_(expansionStates, this.rows_);
     },
 
@@ -204,7 +254,8 @@ tr.exportTo('tr.ui', function() {
 
     setExpansionStates_: function(states, rows) {
       for (var i = 0; i < rows.length; ++i) {
-        if (states[i]) {
+        if (states[i] && rows[i] && rows[i].subRows &&
+            rows[i].subRows.length > 0) {
           this.$.table.setExpandedForTableRow(rows[i], true);
           this.setExpansionStates_(states[i], rows[i].subRows);
         }
@@ -221,7 +272,7 @@ tr.exportTo('tr.ui', function() {
 
     onRelatedValueSelected_: function(event) {
       var value = event.selection;
-      if (!(value instanceof tr.v.Value))
+      if (!(value instanceof tr.v.Histogram))
         return;
 
       event.stopPropagation();
@@ -268,6 +319,7 @@ tr.exportTo('tr.ui', function() {
           continue;
 
         if (test === value) {
+          found = true;
           this.$.show_all.checked = true;
           this.onShowAllChange_();
           this.onRelatedValueSelected_(event);
@@ -283,10 +335,9 @@ tr.exportTo('tr.ui', function() {
       if (row && col && this.columns_)
         cell = row.columns[this.columns_[col].title];
 
-      if ((cell instanceof tr.v.NumericValue) &&
-          (cell.numeric instanceof tr.v.Numeric)) {
+      if (cell instanceof tr.v.Histogram) {
         this.$.histogram.style.display = 'block';
-        this.$.histogram.histogram = cell.numeric;
+        this.$.histogram.histogram = cell;
 
         tr.b.Settings.set(SELECTED_VALUE_SETTINGS_KEY, JSON.stringify({
           row: row.name,
@@ -297,54 +348,31 @@ tr.exportTo('tr.ui', function() {
       }
     },
 
-    handleFailureValues_: function() {
-      this.values.map(function(value) {
-        if (value instanceof tr.v.FailureValue) {
-          Polymer.dom(this.$.error).textContent = value.description;
-          this.$.table.style.display = 'none';
-          this.style.width = '10em';
-        }
-      }, this);
-    },
-
     addDiagnosticSubRows_: function(value, row, column) {
-      value.diagnostics.forEach(function(name, diagnostic) {
-        if (name === tr.v.SUMMARY_VALUE_MAP_DIAGNOSTIC_NAME)
-          return;
-
+      for (var [name, diagnostic] of value.diagnostics) {
         // If a previous |value| had a diagnostic with the same name, then
         // there is already a subRow that should contain this diagnostic.
+        var foundSubRow = false;
         for (var subRow of row.subRows) {
           if (subRow.name === name) {
+            foundSubRow = true;
             subRow.columns[column] = diagnostic;
-            return;
+            continue;
           }
         }
+        if (foundSubRow)
+          continue;
 
         // This is the first time that a diagnostic with this name has been
         // seen for Values whose name is |value.name|, so create a new subRow.
         var subRow = {name: name, columns: {}};
         subRow.columns[column] = diagnostic;
         row.subRows.push(subRow);
-      });
+      }
     },
 
     get values() {
       return this.values_;
-    },
-
-    findSummaryValues_: function() {
-      this.summaryValuesByGuid_ = {};
-      this.values.map(function(value) {
-        var summaryValueMap = value.diagnostics.get(
-            tr.v.SUMMARY_VALUE_MAP_DIAGNOSTIC_NAME);
-        if (!(summaryValueMap instanceof tr.v.d.RelatedValueMap))
-          return;
-
-        summaryValueMap.values.forEach(function(summaryValue) {
-          this.summaryValuesByGuid_[summaryValue.guid] = summaryValue;
-        }, this);
-      }, this);
     },
 
     /**
@@ -352,43 +380,142 @@ tr.exportTo('tr.ui', function() {
      */
     set values(values) {
       this.values_ = values;
-      this.sourceValues_ = values.sourceValues;
-      this.findSummaryValues_();
+      this.sourceValues_ = values ? values.sourceValues : [];
+      this.displayLabels_ = undefined;
+      this.referenceDisplayLabel_ = '';
+
       this.updateContents_();
     },
 
+    get referenceDisplayLabel() {
+      return this.referenceDisplayLabel_;
+    },
+
+    set referenceDisplayLabel(reference) {
+      this.referenceDisplayLabel_ = reference;
+
+      if (this.updatingContents_)
+        return;
+
+      this.$.table.selectedTableColumnIndex = this.referenceDisplayLabel ?
+        1 + this.displayLabels.indexOf(this.referenceDisplayLabel) : undefined;
+
+      // Force the table to rebuild the cell values without forgetting which
+      // rows were expanded.
+      // TODO(benjhayden): remember selected cell
+      var expansionStates = this.getExpansionStates_(this.rows_);
+      this.$.table.tableRows = this.rows_;
+      this.setExpansionStates_(expansionStates, this.rows_);
+    },
+
+    updateReferenceColumnSelector_: function() {
+      Polymer.dom(this.$.reference_column_container).textContent = '';
+
+      if (this.displayLabels.length < 2)
+        return;
+
+      var options = [{value: '', label: 'Select a reference column'}];
+      for (var displayLabel of this.displayLabels)
+        options.push({value: displayLabel, label: displayLabel});
+
+      var settingsKey =
+        'tr-v-ui-value-set-table-reference-display-label';
+      Polymer.dom(this.$.reference_column_container).appendChild(
+          tr.ui.b.createSelector(
+            this, 'referenceDisplayLabel', settingsKey, '', options));
+    },
+
+    updateGroups_: function() {
+      var groups = DEFAULT_POSSIBLE_GROUPS.filter(function(group) {
+        // Remove groups for which there is only one value, except
+        // HISTOGRAM_NAME.
+        if (group.key === tr.v.ValueSet.GROUPINGS.HISTOGRAM_NAME.key)
+          return true;
+
+        var values = new Set();
+        for (var value of this.values_) {
+          value = group.dataFn(value);
+          if (!value)
+            continue;
+
+          values.add(value);
+          if (values.size > 1)
+            return true;
+        }
+        return false;  // Prune this grouping.
+      }, this);
+
+      // Add all storyGroupingKey groups for the current values.
+      for (var storyGroupingKey of this.storyGroupingKeys) {
+        groups.push({
+          key: 'storyGroupingKey_' + storyGroupingKey,
+          label: storyGroupingKey,
+          dataFn: makeStoryGroupingKeyLabelGetter(storyGroupingKey)
+        });
+      }
+
+      // Save and restore current grouping keys in order to let
+      // |set groupingKeys| filter out the keys that are no longer in
+      // possibleGroups.
+      var groupingKeys = this.groupingKeys;
+      this.$.picker.possibleGroups = groups;
+      this.$.picker.currentGroupKeys = groupingKeys;
+
+      this.$.picker.style.display = (groups.length === 1) ? 'none' : '';
+    },
+
     updateContents_: function() {
-      if (!this.values_)
-        return;
-      this.style.width = '';
-      this.$.table.style.display = '';
-      Polymer.dom(this.$.error).textContent = '';
-      this.$.histogram.style.display = 'none';
-
-      this.handleFailureValues_();
-      if (Polymer.dom(this.$.error).textContent)
+      if (this.updatingContents_)
         return;
 
-      this.buildRows_();
-
-      if (this.rows_.length === 0) {
-        Polymer.dom(this.$.error).textContent = 'zero values';
-        this.$.table.style.display = 'none';
-        this.style.width = '10em';
+      if (!this.values_ || (this.values_.length === 0)) {
+        this.$.container.style.display = '';
+        this.$.zero.style.display = '';
         return;
       }
 
-      this.buildColumns_();
+      this.updatingContents_ = true;
 
+      this.$.zero.style.display = 'none';
+      this.$.container.style.display = 'block';
+      this.$.table.style.display = '';
+      this.$.histogram.style.display = 'none';
+
+      this.updateReferenceColumnSelector_();
+      this.updateGroups_();
+      this.buildRows_();
+      this.buildColumns_();
       this.$.table.tableColumns = this.columns_;
       this.$.table.tableRows = this.rows_;
       this.$.table.sortColumnIndex = 0;
       this.$.table.rebuild();
       this.selectValue_();
+      this.maybeDisableShowAll_();
 
-      tr.b.requestAnimationFrame(function() {
-        this.style.width = this.$.table.getBoundingClientRect().width;
-      }, this);
+      this.$.table.selectedTableColumnIndex = this.referenceDisplayLabel ?
+        1 + this.displayLabels.indexOf(this.referenceDisplayLabel) : undefined;
+
+      this.updatingContents_ = false;
+    },
+
+    maybeDisableShowAll_: function() {
+      var allValuesAreSource = true;
+      for (var value of this.values) {
+        if (this.sourceValues_.indexOf(value) < 0) {
+          allValuesAreSource = false;
+          break;
+        }
+      }
+
+      // Disable show_all if hiddenValues is 0.
+      // Re-enable show_all if hiddenValues changes from 0.
+      this.$.show_all.disabled = allValuesAreSource;
+
+      // Check show_all if it is disabled.
+      // Do not automatically uncheck show_all.
+      if (this.$.show_all.disabled) {
+        this.$.show_all.checked = true;
+      }
     },
 
     selectValue_: function() {
@@ -422,7 +549,7 @@ tr.exportTo('tr.ui', function() {
      */
     buildRow_: function(organizedValues, hierarchy) {
       tr.b.iterItems(organizedValues, function(name, value) {
-        if (value instanceof tr.v.Value) {
+        if (value instanceof tr.v.Histogram) {
           // This recursion base case corresponds to the recursion base case of
           // organizeValues(). The last groupingCallback is getDisplayLabel,
           // which defines the columns of the table.
@@ -433,13 +560,18 @@ tr.exportTo('tr.ui', function() {
               row.description = value.description;
 
             if (row.columns[name])
-              row.columns[name] = row.columns[name].merge(value);
+              row.columns[name] = mergeCells(value, row.columns[name]);
             else
               row.columns[name] = value;
           }
 
           var row = hierarchy[hierarchy.length - 1];
-          this.addDiagnosticSubRows_(value, row, name);
+          if (row)
+            this.addDiagnosticSubRows_(value, row, name);
+        } else if (value === UNMERGEABLE) {
+          var row = hierarchy[hierarchy.length - 1];
+          if (row)
+            row.columns[name] = value;
         } else {
           // |value| is actually a nested organizedValues.
           var row = {name: name, subRows: [], columns: {}};
@@ -496,26 +628,12 @@ tr.exportTo('tr.ui', function() {
           this.values : this.sourceValues_;
       var values = [];
       for (var value of showingValues)
-        if (this.summaryValuesByGuid_[value.guid] === undefined)
-          values.push(value);
+        values.push(value);
 
       var groupingCallbacks = [];
-      groupingCallbacks.push(v => v.name);
-      groupingCallbacks.push(
-          v => getIterationInfoField(v, 'benchmarkName', ''));
-      for (var storyGroupingKey of this.storyGroupingKeys) {
-        // Javascript closures are dumb.
-        groupingCallbacks.push((sgk => (
-            v => getStoryGroupingKeyLabel(v, sgk)))(storyGroupingKey));
-      }
-      groupingCallbacks.push(
-          v => getIterationInfoField(v, 'storyDisplayName', ''));
-      groupingCallbacks.push(
-          v => getIterationInfoField(v, 'benchmarkStartString', ''));
-      groupingCallbacks.push(
-          v => getIterationInfoField(v, 'storysetRepeatCounterLabel', 0));
-      groupingCallbacks.push(
-          v => getIterationInfoField(v, 'storyRepeatCounterLabel', 0));
+      for (var group of this.$.picker.currentGroups)
+        groupingCallbacks.push(group.dataFn);
+
       groupingCallbacks.push(getDisplayLabel);
 
       return organizeValues(values, groupingCallbacks, 0);
@@ -591,70 +709,69 @@ tr.exportTo('tr.ui', function() {
     buildRows_: function() {
       this.rows_ = [];
       var hierarchy = [];
-      this.buildRow_(this.organizedValues_, hierarchy);
+      var organizedValues = this.organizedValues_;
+      this.buildRow_(organizedValues, hierarchy);
       this.rows_ = this.rows_.filter(this.rowMatchesSearch_.bind(this));
     },
 
     get startTimesForDisplayLabels() {
       var startTimesForDisplayLabels = {};
       for (var value of this.values) {
-        if (this.summaryValuesByGuid_[value.guid])
-          continue;
-
         var displayLabel = getDisplayLabel(value);
         startTimesForDisplayLabels[displayLabel] = Math.min(
             startTimesForDisplayLabels[displayLabel] || 0,
-            getIterationInfoField(
+            tr.v.d.IterationInfo.getField(
                 value, 'benchmarkStart', new Date(0)).getTime());
       }
       return startTimesForDisplayLabels;
     },
 
     get displayLabels() {
-      var startTimesForDisplayLabels = this.startTimesForDisplayLabels;
-      var displayLabels = Object.keys(startTimesForDisplayLabels);
-      displayLabels.sort(function(a, b) {
-        return startTimesForDisplayLabels[a] - startTimesForDisplayLabels[b];
-      });
-      return displayLabels;
+      if (this.displayLabels_ === undefined) {
+        var startTimesForDisplayLabels = this.startTimesForDisplayLabels;
+        this.displayLabels_ = Object.keys(startTimesForDisplayLabels);
+        this.displayLabels_.sort(function(a, b) {
+          return startTimesForDisplayLabels[a] - startTimesForDisplayLabels[b];
+        });
+      }
+      return this.displayLabels_;
     },
 
     buildColumn_: function(displayLabel) {
       function getValueForValue(value) {
-        return value.numeric instanceof tr.v.Numeric ? value.numeric.average :
-          value.numeric.value;
+        return value instanceof tr.v.Histogram ? value.average : value.value;
       }
 
       return {
         title: displayLabel,
         align: tr.ui.b.TableFormat.ColumnAlignment.RIGHT,
         supportsCellSelection: true,
-        selectable: true,
 
         value: function(row) {
           var cell = row.columns[displayLabel];
           if (cell === undefined)
-            return '';
+            return '(missing)';
 
-          if (cell instanceof tr.v.NumericValue) {
-            if (this.$.table.selectedTableColumn &&
-                this.$.table.selectedTableColumn.title !== displayLabel) {
-              var referenceCell = row.columns[
-                this.$.table.selectedTableColumn.title];
+          if (cell === UNMERGEABLE)
+            return cell;
 
-              if (referenceCell instanceof tr.v.NumericValue &&
-                  cell.numeric.unit === referenceCell.numeric.unit) {
-                var significance = tr.v.Significance.DONT_CARE;
+          if (cell instanceof tr.v.Histogram) {
+            if (cell.numValues === 0) {
+              return '(empty)';
+            }
 
-                if (cell.numeric instanceof tr.v.Numeric &&
-                    referenceCell.numeric instanceof tr.v.Numeric) {
-                  significance = cell.numeric.getDifferenceSignificance(
-                      referenceCell.numeric);
-                }
+            if (this.referenceDisplayLabel &&
+                this.referenceDisplayLabel !== displayLabel) {
+              var referenceCell = row.columns[this.referenceDisplayLabel];
 
+              if (referenceCell instanceof tr.v.Histogram &&
+                  cell.unit === referenceCell.unit &&
+                  referenceCell.numValues > 0) {
+                var significance = cell.getDifferenceSignificance(
+                    referenceCell);
                 return tr.v.ui.createScalarSpan(
                     getValueForValue(cell) - getValueForValue(referenceCell),
-                    {unit: cell.numeric.unit.correspondingDeltaUnit,
+                    {unit: cell.unit.correspondingDeltaUnit,
                      significance: significance});
               }
             }
@@ -663,6 +780,7 @@ tr.exportTo('tr.ui', function() {
           }
           if (cell instanceof tr.v.d.Diagnostic) {
             var span = tr.v.ui.createDiagnosticSpan(cell);
+            span.addEventListener('click', (event) => event.stopPropagation());
             span.style.textAlign = 'left';
             return span;
           }
@@ -672,8 +790,8 @@ tr.exportTo('tr.ui', function() {
         cmp: function(rowA, rowB) {
           var cellA = rowA.columns[displayLabel];
           var cellB = rowB.columns[displayLabel];
-          if (!(cellA instanceof tr.v.NumericValue) ||
-              !(cellB instanceof tr.v.NumericValue)) {
+          if (!(cellA instanceof tr.v.Histogram) ||
+              !(cellB instanceof tr.v.Histogram)) {
             return undefined;
           }
 
@@ -682,15 +800,14 @@ tr.exportTo('tr.ui', function() {
 
           // If a reference column is selected, compare the *differences*
           // between the two cells and their references.
-          if (this.$.table.selectedTableColumn &&
-              this.$.table.selectedTableColumn.title !== displayLabel) {
-            var referenceColumn = this.$.table.selectedTableColumn.title;
-            var referenceCellA = rowA.columns[referenceColumn];
-            var referenceCellB = rowB.columns[referenceColumn];
-            if (referenceCellA instanceof tr.v.NumericValue &&
-                referenceCellB instanceof tr.v.NumericValue &&
-                cellA.numeric.unit === referenceCellA.numeric.unit &&
-                cellB.numeric.unit === referenceCellB.numeric.unit) {
+          if (this.referenceDisplayLabel &&
+              this.referenceDisplayLabel !== displayLabel) {
+            var referenceCellA = rowA.columns[this.referenceDisplayLabel];
+            var referenceCellB = rowB.columns[this.referenceDisplayLabel];
+            if (referenceCellA instanceof tr.v.Histogram &&
+                referenceCellB instanceof tr.v.Histogram &&
+                cellA.unit === referenceCellA.unit &&
+                cellB.unit === referenceCellB.unit) {
               valueA -= getValueForValue(referenceCellA);
               valueB -= getValueForValue(referenceCellB);
             }
@@ -725,8 +842,6 @@ tr.exportTo('tr.ui', function() {
         this.columns_.push(this.buildColumn_(displayLabel));
     }
   });
-
-  tr.v.ui.registerValueSetView('tr-v-ui-value-set-table');
 
   return {};
 });
