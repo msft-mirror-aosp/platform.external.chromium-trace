@@ -6,7 +6,7 @@ import logging
 
 from battor import battor_error
 from battor import battor_wrapper
-from catapult_base import cloud_storage
+from py_utils import cloud_storage
 from devil.android import battery_utils
 from py_trace_event import trace_time
 from telemetry.internal.platform import tracing_agent
@@ -99,7 +99,13 @@ class BattOrTracingAgent(tracing_agent.TracingAgent):
         tracing controller clock sync marker.
     """
     timestamp = trace_time.Now()
-    self._battor.RecordClockSyncMarker(sync_id)
+    try:
+      self._battor.RecordClockSyncMarker(sync_id)
+    except battor_error.BattorError:
+      logging.critical(
+          'Error while clock syncing with BattOr. Killing BattOr shell.')
+      self._battor.KillBattOrShell()
+      raise
     record_controller_clock_sync_marker_callback(sync_id, timestamp)
 
   def CollectAgentTraceData(self, trace_data_builder, timeout=None):
