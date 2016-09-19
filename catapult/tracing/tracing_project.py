@@ -58,6 +58,7 @@ class TracingProject(object):
       os.path.join(os.path.dirname(__file__), os.path.pardir))
 
   tracing_root_path = os.path.join(catapult_path, 'tracing')
+  trace_processor_root_path = os.path.join(catapult_path, 'trace_processor')
   tracing_src_path = os.path.join(tracing_root_path, 'tracing')
   extras_path = os.path.join(tracing_src_path, 'extras')
   ui_extras_path = os.path.join(tracing_src_path, 'ui', 'extras')
@@ -82,7 +83,7 @@ class TracingProject(object):
   chai_path = os.path.join(tracing_third_party_path, 'chai')
   mocha_path = os.path.join(tracing_third_party_path, 'mocha')
 
-  mre_path = os.path.join(catapult_path, 'perf_insights')
+  mre_path = os.path.join(tracing_src_path, 'mre')
 
   metrics_path = os.path.join(tracing_src_path, 'metrics')
 

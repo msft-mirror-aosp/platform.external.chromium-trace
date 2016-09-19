@@ -4,19 +4,14 @@ Copyright 2016 The Chromium Authors. All rights reserved.
 Use of this source code is governed by a BSD-style license that can be
 found in the LICENSE file.
 -->
+
 <link rel="import" href="/tracing/metrics/metric_registry.html">
-<link rel="import" href="/tracing/value/numeric.html">
-<link rel="import" href="/tracing/value/value.html">
+<link rel="import" href="/tracing/value/histogram.html">
 
 <script>
 'use strict';
 
 tr.exportTo('tr.metrics.sh', function() {
-
-  var CPU_NUMERIC_BUILDER = tr.v.NumericBuilder.createLinear(
-      tr.v.Unit.byName.normalizedPercentage_smallerIsBetter,
-      tr.b.Range.fromExplicitRange(0, 100), 20);
-
   function getCpuSnapshotsFromModel(model) {
    var snapshots = [];
    for (var pid in model.processes) {
@@ -52,12 +47,13 @@ tr.exportTo('tr.metrics.sh', function() {
      for (var [processName, processData] of processSums.entries()) {
        if (!(processNumerics.has(processName))) {
          processNumerics.set(processName, {
-           numeric: CPU_NUMERIC_BUILDER.build(),
+           numeric: new tr.v.Histogram('cpu:percent:' + processName,
+             tr.b.Unit.byName.normalizedPercentage_smallerIsBetter),
            paths: new Set()
          });
        }
-       processNumerics.get(processName).numeric.add(
-           processData.sum);
+       processNumerics.get(processName).numeric.addSample(
+           processData.sum / 100.0);
        for (var path of processData.paths)
          processNumerics.get(processName).paths.add(path);
      }
@@ -68,18 +64,17 @@ tr.exportTo('tr.metrics.sh', function() {
   function cpuProcessMetric(values, model) {
     var snapshots = getCpuSnapshotsFromModel(model);
     var processNumerics = buildNumericsFromSnapshots(snapshots);
-    for (var [processName, processData] of processNumerics.entries()) {
+    for (var [processName, processData] of processNumerics) {
       var numeric = processData.numeric;
       // Treat missing snapshots as zeros. A process is missing from a snapshots
       // when its CPU usage was below minimum threshold when the snapshot was
       // taken.
       var missingSnapshotCount = snapshots.length - numeric.numValues;
       for (var i = 0; i < missingSnapshotCount; i++)
-        numeric.add(0);
-      var value = new tr.v.NumericValue('cpu:percent:' + processName, numeric);
-      value.diagnostics.add('paths', new
+        numeric.addSample(0);
+      numeric.diagnostics.set('paths', new
           tr.v.d.Generic([...processData.paths]));
-      values.addValue(value);
+      values.addHistogram(numeric);
     }
   }
 
