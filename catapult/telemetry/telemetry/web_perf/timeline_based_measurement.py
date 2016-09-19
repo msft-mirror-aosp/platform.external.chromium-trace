@@ -19,7 +19,6 @@ from telemetry.web_perf.metrics import webrtc_rendering_timeline
 from telemetry.web_perf.metrics import gpu_timeline
 from telemetry.web_perf.metrics import indexeddb_timeline
 from telemetry.web_perf.metrics import layout
-from telemetry.web_perf.metrics import memory_timeline
 from telemetry.web_perf.metrics import smoothness
 from telemetry.web_perf.metrics import text_selection
 from telemetry.web_perf import smooth_gesture_util
@@ -50,7 +49,6 @@ def _GetAllLegacyTimelineBasedMetrics():
           gpu_timeline.GPUTimelineMetric(),
           blob_timeline.BlobTimelineMetric(),
           jitter_timeline.JitterTimelineMetric(),
-          memory_timeline.MemoryTimelineMetric(),
           text_selection.TextSelectionMetric(),
           indexeddb_timeline.IndexedDBTimelineMetric(),
           webrtc_rendering_timeline.WebRtcRenderingTimelineMetric())
@@ -273,6 +271,14 @@ class TimelineBasedMeasurement(story_test.StoryTest):
     """Configure and start tracing."""
     if not platform.tracing_controller.IsChromeTracingSupported():
       raise Exception('Not supported')
+    if self._tbm_options.config.enable_chrome_trace:
+      # Always enable 'blink.console' category for:
+      # 1) Backward compat of chrome clock sync (crbug.com/646925)
+      # 2) Allows users to add trace event through javascript.
+      # Note that blink.console is extremely low-overhead, so this doesn't
+      # affect the tracing overhead budget much.
+      chrome_config = self._tbm_options.config.chrome_trace_config
+      chrome_config.category_filter.AddIncludedCategory('blink.console')
     platform.tracing_controller.StartTracing(self._tbm_options.config)
 
   def Measure(self, platform, results):
@@ -317,12 +323,10 @@ class TimelineBasedMeasurement(story_test.StoryTest):
       results.AddValue(
           common_value_helpers.TranslateMreFailure(d, page))
 
-    value_dicts = mre_result.pairs.get('values', [])
-    results.value_set.extend(value_dicts)
-    for d in value_dicts:
-      if common_value_helpers.IsScalarNumericValue(d):
-        results.AddValue(
-            common_value_helpers.TranslateScalarValue(d, page))
+    results.value_set.extend(mre_result.pairs.get('histograms', []))
+
+    for d in mre_result.pairs.get('scalars', []):
+      results.AddValue(common_value_helpers.TranslateScalarValue(d, page))
 
   def _ComputeLegacyTimelineBasedMetrics(self, results, trace_result):
     model = model_module.TimelineModel(trace_result)

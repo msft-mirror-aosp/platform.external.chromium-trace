@@ -28,6 +28,8 @@ with devil_env.SysPath(devil_env.DEPENDENCY_MANAGER_PATH):
   import dependency_manager  # pylint: disable=import-error
 
 
+ADB_KEYS_FILE = '/data/misc/adb/adb_keys'
+
 DEFAULT_TIMEOUT = 30
 DEFAULT_RETRIES = 2
 
@@ -129,7 +131,7 @@ class AdbWrapper(object):
     up a new ADB shell for each command.
 
     Example of use:
-    with pshell as PersistentShell('123456789'):
+    with PersistentShell('123456789') as pshell:
         pshell.RunCommand('which ls')
         pshell.RunCommandAndClose('echo TEST')
     '''

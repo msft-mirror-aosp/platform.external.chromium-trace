@@ -53,6 +53,17 @@ class CrOSBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
 
   def GetBrowserStartupArgs(self):
     args = super(CrOSBrowserBackend, self).GetBrowserStartupArgs()
+
+    logging_patterns = ['*/chromeos/net/*',
+                        '*/chromeos/login/*',
+                        '*/dbus/*',
+                        'application_lifetime',
+                        'chrome_browser_main_posix']
+    vmodule = '--vmodule='
+    for pattern in logging_patterns:
+      vmodule += '%s=2,' % pattern
+    vmodule = vmodule.rstrip(',')
+
     args.extend([
             '--enable-smooth-scrolling',
             '--enable-threaded-compositing',
@@ -67,7 +78,7 @@ class CrOSBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
             # Skip user image selection screen, and post login screens.
             '--oobe-skip-postlogin',
             # Debug logging.
-            '--vmodule=*/chromeos/net/*=2,*/chromeos/login/*=2'])
+            vmodule])
 
     # Disable GAIA services unless we're using GAIA login, or if there's an
     # explicit request for it.
@@ -106,7 +117,8 @@ class CrOSBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
     startup_args = [a.replace(',', '\\,') for a in self.GetBrowserStartupArgs()]
 
     # Restart Chrome with the login extension and remote debugging.
-    logging.info('Restarting Chrome with flags and login')
+    pid = self.pid
+    logging.info('Restarting Chrome (pid=%d) with remote port', pid)
     args = ['dbus-send', '--system', '--type=method_call',
             '--dest=org.chromium.SessionManager',
             '/org/chromium/SessionManager',
@@ -120,36 +132,41 @@ class CrOSBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
       # TODO(crbug.com/404771): Move port forwarding to network_controller.
       self._port = util.GetUnreservedAvailableLocalPort()
       self._forwarder = self._platform_backend.forwarder_factory.Create(
-          forwarders.PortPairs(
-              http=forwarders.PortPair(self._port, self._remote_debugging_port),
-              https=None,
-              dns=None), use_remote_port_forwarding=False)
+          forwarders.PortPair(self._port, self._remote_debugging_port),
+          use_remote_port_forwarding=False)
 
-    # Wait for oobe.
+    # Wait for new chrome and oobe.
+    util.WaitFor(lambda: pid != self.pid, 15)
     self._WaitForBrowserToComeUp()
     self._InitDevtoolsClientBackend(
         remote_devtools_port=self._remote_debugging_port)
     util.WaitFor(lambda: self.oobe_exists, 30)
 
     if self.browser_options.auto_login:
-      try:
-        if self._is_guest:
-          pid = self.pid
-          self.oobe.NavigateGuestLogin()
-          # Guest browsing shuts down the current browser and launches an
-          # incognito browser in a separate process, which we need to wait for.
-          util.WaitFor(lambda: pid != self.pid, 10)
-        elif self.browser_options.gaia_login:
-          self.oobe.NavigateGaiaLogin(self._username, self._password)
-        else:
-          self.oobe.NavigateFakeLogin(self._username, self._password,
-              self._gaia_id, not self.browser_options.disable_gaia_services)
+      if self._is_guest:
+        pid = self.pid
+        self.oobe.NavigateGuestLogin()
+        # Guest browsing shuts down the current browser and launches an
+        # incognito browser in a separate process, which we need to wait for.
+        try:
+          # TODO(achuith): Reduce this timeout to 15 sec after crbug.com/631640
+          # is resolved.
+          util.WaitFor(lambda: pid != self.pid, 60)
+        except exceptions.TimeoutException:
+          self._RaiseOnLoginFailure(
+              'Failed to restart browser in guest mode (pid %d).' % pid)
 
+      elif self.browser_options.gaia_login:
+        self.oobe.NavigateGaiaLogin(self._username, self._password)
+      else:
+        self.oobe.NavigateFakeLogin(self._username, self._password,
+            self._gaia_id, not self.browser_options.disable_gaia_services)
+
+      try:
         self._WaitForLogin()
       except exceptions.TimeoutException:
-        self._cri.TakeScreenshotWithPrefix('login-screen')
-        raise exceptions.LoginException('Timed out going through login screen. '
-                                        + self._GetLoginStatus())
+        self._RaiseOnLoginFailure('Timed out going through login screen. '
+                                  + self._GetLoginStatus())
 
     logging.info('Browser is up!')
 
@@ -250,3 +267,8 @@ class CrOSBrowserBackend(chrome_browser_backend.ChromeBrowserBackend):
     # Wait for extensions to load.
     if self._supports_extensions:
       self._WaitForExtensionsToLoad()
+
+  def _RaiseOnLoginFailure(self, error):
+    if self._platform_backend.CanTakeScreenshot():
+      self._cri.TakeScreenshotWithPrefix('login-screen')
+    raise exceptions.LoginException(error)
