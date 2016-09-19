@@ -6,7 +6,8 @@ found in the LICENSE file.
 -->
 
 <link rel="import" href="/tracing/base/statistics.html">
-<link rel="import" href="/tracing/ui/base/bar_chart.html">
+<link rel="import" href="/tracing/ui/base/column_chart.html">
+<link rel="import" href="/tracing/value/ui/diagnostic_map_table.html">
 <link rel="import" href="/tracing/value/ui/diagnostic_span.html">
 <link rel="import" href="/tracing/value/ui/numeric_stats_span.html">
 <link rel="import" href="/tracing/value/ui/scalar_span.html">
@@ -18,18 +19,14 @@ found in the LICENSE file.
         display: flex;
         flex-direction: row;
       }
-      #diagnostics {
-        display: flex;
-        flex-direction: column;
-      }
     </style>
 
     <div id="container">
       <div id="chart"></div>
       <tr-v-ui-numeric-stats-span id="stats"></tr-v-ui-numeric-stats-span>
     </div>
-    <div id="diagnostics">
-    </div>
+
+    <tr-v-ui-diagnostic-map-table id="diagnostic_map_table"></tr-v-ui-diagnostic-map-table>
   </template>
 </dom-module>
 <script>
@@ -40,7 +37,7 @@ Polymer({
 
   created: function() {
     this.histogram_ = undefined;
-    this.chart_ = new tr.ui.b.BarChart();
+    this.chart_ = new tr.ui.b.ColumnChart();
     this.chart_.width = 400;
     this.chart_.height = 200;
     this.chart_.margin.right = 2;
@@ -130,16 +127,18 @@ Polymer({
   },
 
   updateDiagnostics_: function(bins) {
-    Polymer.dom(this.$.diagnostics).textContent = '';
-    for (var bin of bins) {
-      for (var diagnosticMap of bin.diagnosticMaps) {
-        // TODO(eakuefner): Display these in a table.
-        diagnosticMap.forEach(function(unused_name, d) {
-          Polymer.dom(this.$.diagnostics).appendChild(
-              tr.v.ui.createDiagnosticSpan(d));
-        }, this);
-      }
+    var maps = [];
+    for (var bin of bins)
+      for (var map of bin.diagnosticMaps)
+        maps.push(map);
+
+    if (maps.length === 0) {
+      this.$.diagnostic_map_table.style.display = 'none';
+      return;
     }
+
+    this.$.diagnostic_map_table.diagnosticMaps = maps;
+    this.$.diagnostic_map_table.style.display = 'block';
   },
 
   get histogram() {
@@ -148,7 +147,6 @@ Polymer({
 
   set histogram(histogram) {
     this.histogram_ = histogram;
-    Polymer.dom(this.$.diagnostics).textContent = '';
     this.updateContents_();
   },
 
@@ -158,32 +156,34 @@ Polymer({
 
   updateContents_: function() {
     this.$.chart.style.display = this.histogram_ ? '' : 'none';
+    this.$.diagnostic_map_table.style.display = 'none';
     this.$.stats.numeric = this.histogram_;
+    this.brushedBins_ = [];
     if (!this.histogram_)
       return;
 
-    var maximumBinValue = tr.b.Statistics.max(this.histogram_.allBins,
-                                              function(bin) {
-                                                return bin.count;
-                                              });
-    var chartData = [];
-    var binWidth = this.histogram_.centralBins[0].range.range;
-    this.histogram_.allBins.forEach(function(bin) {
-      var x = bin.range.min;
-      if (x === -Number.MAX_VALUE) {
-        if (!bin.count)
-          return;
-        x = bin.range.max - binWidth;
-      }
-      chartData.push({x: x, y: bin.count});
-    });
-    chartData.sort(function(x, y) {
-      return x.x - y.x;
-    });
-    this.$.chart.style.display = chartData.length ? '' : 'none';
-    this.chart_.data = chartData;
-    this.brushedBins_ = [];
-    this.chart_.brushedRange = new tr.b.Range();
+    if (this.histogram_.numValues <= 1) {
+      this.$.container.style.display = 'none';
+      // Don't return! Still do the updateDiagnostics_(occupiedBins) below!
+    } else {
+      this.$.container.style.display = '';
+      var maximumBinValue = tr.b.Statistics.max(
+          this.histogram_.allBins, (bin) => bin.count);
+      var chartData = [];
+      var binWidth = this.histogram_.centralBins[0].range.range;
+      this.histogram_.allBins.forEach(function(bin) {
+        var x = bin.range.min;
+        if (x === -Number.MAX_VALUE) {
+          if (!bin.count)
+            return;
+          x = bin.range.max - binWidth;
+        }
+        chartData.push({x: x, y: bin.count});
+      });
+      chartData.sort((x, y) => x.x - y.x);
+      this.chart_.data = chartData;
+      this.chart_.brushedRange = new tr.b.Range();
+    }
 
     var occupiedBins = [];
     for (var bin of this.histogram.allBins) {

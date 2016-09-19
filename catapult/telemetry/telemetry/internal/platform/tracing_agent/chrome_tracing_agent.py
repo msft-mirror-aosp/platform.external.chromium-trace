@@ -133,7 +133,7 @@ class ChromeTracingAgent(tracing_agent.TracingAgent):
       devtools_clients):
     has_clock_synced = False
     if not devtools_clients:
-      raise ChromeClockSyncError()
+      raise ChromeClockSyncError('Cannot issue clock sync. No devtools clients')
 
     for client in devtools_clients:
       try:
@@ -146,7 +146,8 @@ class ChromeTracingAgent(tracing_agent.TracingAgent):
         logging.exception('Failed to record clock sync marker with sync_id=%r '
                           'via DevTools client %r:' % (sync_id, client))
     if not has_clock_synced:
-      raise ChromeClockSyncError()
+      raise ChromeClockSyncError(
+          'Failed to issue clock sync to devtools client')
     record_controller_clock_sync_marker_callback(sync_id, timestamp)
 
   def _RecordClockSyncMarkerAsyncEvent(
@@ -165,7 +166,8 @@ class ChromeTracingAgent(tracing_agent.TracingAgent):
         logging.exception('Failed to record clock sync marker with sync_id=%r '
                           'via inspector backend %r:' % (sync_id, backend))
     if not has_clock_synced:
-      raise ChromeClockSyncError()
+      raise ChromeClockSyncError(
+          'Failed to issue clock sync to devtools client')
     record_controller_clock_sync_marker_callback(sync_id, timestamp)
 
   def RecordClockSyncMarker(self, sync_id,
@@ -176,11 +178,17 @@ class ChromeTracingAgent(tracing_agent.TracingAgent):
     for client in devtools_clients:
       version = client.GetChromeBranchNumber()
       break
-    if version and int(version) >= 2661:
+    logging.info('Chrome version: %s', version)
+    # Note, we aren't sure whether 2744 is the correct cut-off point which
+    # Chrome will support clock sync marker, however we verified that 2743 does
+    # not support clock sync (catapult/issues/2804) hence we use it here.
+    # On the next update of Chrome ref build, if testTBM2ForSmoke still fails,
+    # the cut-off branch number will need to be bumped up again.
+    if version and int(version) > 2743:
       self._RecordClockSyncMarkerDevTools(
           sync_id, record_controller_clock_sync_marker_callback,
           devtools_clients)
-    else:  # TODO(rnephew): Remove once chrome stable is past branch 2661.
+    else:  # TODO(rnephew): Remove once chrome stable is past branch 2743.
       self._RecordClockSyncMarkerAsyncEvent(
           sync_id, record_controller_clock_sync_marker_callback)
 

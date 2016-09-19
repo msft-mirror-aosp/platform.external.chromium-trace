@@ -4,7 +4,7 @@
 
 import unittest
 
-from catapult_base import cloud_storage
+from py_utils import cloud_storage
 from telemetry.internal.browser import browser_finder
 from telemetry.testing import options_for_unittests
 from telemetry.util import wpr_modes
@@ -46,6 +46,7 @@ class SeriallyExecutedBrowserTestCase(unittest.TestCase):
     cls._browser_to_create = browser_finder.FindBrowser(browser_options)
     if not cls.platform:
       cls.platform = cls._browser_to_create.platform
+      cls.platform.network_controller.InitializeIfNeeded()
     else:
       assert cls.platform == cls._browser_to_create.platform, (
           'All browser launches within same test suite must use browsers on '
@@ -92,13 +93,15 @@ class SeriallyExecutedBrowserTestCase(unittest.TestCase):
   def tearDownClass(cls):
     if cls.platform:
       cls.platform.StopAllLocalServers()
+      cls.platform.network_controller.Close()
     if cls.browser:
       cls.StopBrowser()
 
   @classmethod
-  def SetStaticServerDir(cls, dir_path):
+  def SetStaticServerDirs(cls, dirs_path):
     assert cls.platform
-    cls.platform.SetHTTPServerDirectories(dir_path)
+    assert isinstance(dirs_path, list)
+    cls.platform.SetHTTPServerDirectories(dirs_path)
 
   @classmethod
   def UrlOfStaticFilePath(cls, file_path):
