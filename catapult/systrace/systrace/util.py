@@ -3,6 +3,9 @@
 # found in the LICENSE file.
 
 import optparse
+import os
+import random
+import string
 import subprocess
 import sys
 
@@ -135,16 +138,15 @@ def get_device_sdk_version():
 
   return version
 
-def get_device_serials():
-  """Get the serial numbers of devices connected via adb.
 
-  Only gets serial numbers of "active" devices (e.g. does not get serial
-  numbers of devices which have not been authorized.)
-  """
+def generate_random_filename_for_test():
+  """Used for temporary files used in tests.
 
-  adb_output, adb_return_code = run_adb_command(['adb', 'devices'])
-  if adb_return_code == 0:
-    lines = [x.split() for x in adb_output.splitlines()[1:-1]]
-    return [x[0] for x in lines if x[1] == 'device']
-  else:
-    sys.exit(1)
+  Files created from 'NamedTemporaryFile' have inconsistent reuse support across
+  platforms, so it's not guaranteed that they can be reopened. Since many tests
+  communicate files via path, we typically use this method, as well as
+  manual file removal."""
+  name = ''.join(random.choice(string.ascii_uppercase +
+              string.digits) for _ in range(10))
+  return os.path.abspath(name)
+

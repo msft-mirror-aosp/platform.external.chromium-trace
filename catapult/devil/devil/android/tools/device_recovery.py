@@ -22,7 +22,8 @@ from devil.android import device_errors
 from devil.android import device_utils
 from devil.android.tools import device_status
 from devil.utils import lsusb
-from devil.utils import reset_usb
+# TODO(jbudorick): Resolve this after experimenting w/ disabling the USB reset.
+from devil.utils import reset_usb  # pylint: disable=unused-import
 from devil.utils import run_tests_helper
 
 
@@ -101,7 +102,7 @@ def RecoverDevice(device, blacklist, should_reboot=lambda device: True):
                          reason='reboot_timeout')
 
 
-def RecoverDevices(devices, blacklist):
+def RecoverDevices(devices, blacklist, enable_usb_reset=False):
   """Attempts to recover any inoperable devices in the provided list.
 
   Args:
@@ -140,7 +141,13 @@ def RecoverDevices(devices, blacklist):
     KillAllAdb()
   for serial in should_restart_usb:
     try:
-      reset_usb.reset_android_usb(serial)
+      # TODO(crbug.com/642194): Resetting may be causing more harm
+      # (specifically, kernel panics) than it does good.
+      if enable_usb_reset:
+        reset_usb.reset_android_usb(serial)
+      else:
+        logging.warning('USB reset disabled for %s (crbug.com/642914)',
+                        serial)
     except IOError:
       logging.exception('Unable to reset USB for %s.', serial)
       if blacklist:
@@ -163,27 +170,19 @@ def main():
   parser.add_argument('--known-devices-file', action='append', default=[],
                       dest='known_devices_files',
                       help='Path to known device lists.')
+  parser.add_argument('--enable-usb-reset', action='store_true',
+                      help='Reset USB if necessary.')
   parser.add_argument('-v', '--verbose', action='count', default=1,
                       help='Log more information.')
 
   args = parser.parse_args()
   run_tests_helper.SetLogLevel(args.verbose)
 
-  devil_dynamic_config = {
-    'config_type': 'BaseConfig',
-    'dependencies': {},
-  }
-
+  devil_dynamic_config = devil_env.EmptyConfig()
   if args.adb_path:
-    devil_dynamic_config['dependencies'].update({
-        'adb': {
-          'file_info': {
-            devil_env.GetPlatform(): {
-              'local_paths': [args.adb_path]
-            }
-          }
-        }
-    })
+    devil_dynamic_config['dependencies'].update(
+        devil_env.LocalConfigItem(
+            'adb', devil_env.GetPlatform(), args.adb_path))
   devil_env.config.Initialize(configs=[devil_dynamic_config])
 
   blacklist = (device_blacklist.Blacklist(args.blacklist_file)
@@ -195,7 +194,7 @@ def main():
   devices = [device_utils.DeviceUtils(s)
              for s in expected_devices.union(usb_devices)]
 
-  RecoverDevices(devices, blacklist)
+  RecoverDevices(devices, blacklist, enable_usb_reset=args.enable_usb_reset)
 
 
 if __name__ == '__main__':

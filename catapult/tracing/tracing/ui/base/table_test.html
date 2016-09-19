@@ -12,7 +12,7 @@ found in the LICENSE file.
 'use strict';
 
 tr.b.unittest.testSuite(function() {
-  var THIS_DOC = document._currentScript.ownerDocument;
+  var THIS_DOC = document.currentScript.ownerDocument;
   var SelectionMode = tr.ui.b.TableFormat.SelectionMode;
   var HighlightStyle = tr.ui.b.TableFormat.HighlightStyle;
   var ColumnAlignment = tr.ui.b.TableFormat.ColumnAlignment;
@@ -21,6 +21,16 @@ tr.b.unittest.testSuite(function() {
     if (!element.hasAttribute('selected'))
       return false;
     return element.getAttribute('selected') === 'true';
+  }
+
+  function simulateDoubleClick(element) {
+    // See https://developer.mozilla.org/en/docs/Web/API/MouseEvent#Example.
+    var event = new MouseEvent('dblclick', {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    return element.dispatchEvent(event);
   }
 
   test('instantiateEmptyTable_withoutEmptyValue', function() {
@@ -802,11 +812,11 @@ tr.b.unittest.testSuite(function() {
 
     // Enter on collapsed row should expand.
     table.selectedTableRow = rows[0];
-    table.performKeyCommand_('ENTER');
+    table.performKeyCommand_('SPACE');
     assert.equal(table.selectedTableRow, rows[0]);
     assert.isTrue(table.getExpandedForTableRow(rows[0]));
 
-    table.performKeyCommand_('ENTER');
+    table.performKeyCommand_('SPACE');
     assert.isFalse(table.getExpandedForTableRow(rows[0]));
 
     // Arrow right on collapsed row should expand.
@@ -1472,6 +1482,51 @@ tr.b.unittest.testSuite(function() {
     assert.isDefined(tr.b.findDeepElementMatchingPredicate(table, isB));
   });
 
+  test('userCanModifySortOrder', function() {
+    var table = document.createElement('tr-ui-b-table');
+    table.tableColumns = [
+      {
+        title: 'Name',
+        value: row => row.name
+      },
+      {
+        title: 'colA',
+        value: row => row.a,
+        cmp: (rowA, rowB) => rowA.a - rowB.a
+      },
+      {
+        title: 'colB',
+        value: row => row.b,
+        cmp: (rowA, rowB) => rowA.b - rowB.b
+      }
+    ];
+    table.tableRows = [
+      {name: 'A', a: 42, b: 0},
+      {name: 'B', a: 89, b: 100},
+      {name: 'C', a: 65, b: -273.15}
+    ];
+    table.userCanModifySortOrder = false;
+    table.sortColumnIndex = 2;
+    table.sortDescending = true;
+    table.rebuild();
+    this.addHTMLOutput(table);
+
+    var toggleButton = document.createElement('button');
+    Polymer.dom(toggleButton).textContent =
+        'Toggle table.userCanModifySortOrder';
+    toggleButton.addEventListener('click', function() {
+      table.userCanModifySortOrder = !table.userCanModifySortOrder;
+    });
+    this.addHTMLOutput(toggleButton);
+
+    var unsetButton = document.createElement('button');
+    Polymer.dom(unsetButton).textContent = 'Unset sort order';
+    unsetButton.addEventListener('click', function() {
+      table.sortColumnIndex = undefined;
+    });
+    this.addHTMLOutput(unsetButton);
+  });
+
   test('columnSelection', function() {
     var table = document.createElement('tr-ui-b-table');
     table.tableColumns = [
@@ -1500,24 +1555,110 @@ tr.b.unittest.testSuite(function() {
     table.selectionMode = SelectionMode.CELL;
     this.addHTMLOutput(table);
 
-    var eventCount = 0;
-    table.addEventListener('selected-column-changed', event => ++eventCount);
+    table.selectedTableColumnIndex = 1;
+    var cols = tr.b.findDeepElementMatchingPredicate(table,
+        e => e.tagName === 'COLGROUP').children;
+    assert.isNull(cols[0].getAttribute('selected'));
+    assert.strictEqual(cols[1].getAttribute('selected'), 'true');
+    assert.isNull(cols[2].getAttribute('selected'));
+    assert.strictEqual(1, table.selectedTableColumnIndex);
 
-    assert.throws(function() {
-      table.selectedTableColumn = table.tableColumns[0];
-    });
+    table.selectedTableColumnIndex = undefined;
+    cols = tr.b.findDeepElementMatchingPredicate(table,
+        e => e.tagName === 'COLGROUP').children;
+    assert.isNull(cols[0].getAttribute('selected'));
+    assert.isNull(cols[1].getAttribute('selected'));
+    assert.isNull(cols[2].getAttribute('selected'));
+    assert.isUndefined(table.selectedTableColumnIndex);
 
-    table.selectedTableColumn = table.tableColumns[1];
-    assert.strictEqual(eventCount, 1);
-    assert.strictEqual(table.tableColumns[1], table.selectedTableColumn);
+    table.selectedTableColumnIndex = 2;
+    cols = tr.b.findDeepElementMatchingPredicate(table,
+        e => e.tagName === 'COLGROUP').children;
+    assert.isNull(cols[0].getAttribute('selected'));
+    assert.isNull(cols[1].getAttribute('selected'));
+    assert.strictEqual(cols[2].getAttribute('selected'), 'true');
+    assert.strictEqual(2, table.selectedTableColumnIndex);
+  });
 
-    table.selectedTableColumn = table.tableColumns[2];
-    assert.strictEqual(eventCount, 2);
-    assert.strictEqual(table.tableColumns[2], table.selectedTableColumn);
+  test('stepInto', function() {
+    var columns = [
+      {
+        title: 'Title',
+        value: function(row) { return row.a; },
+        width: '150px',
+        supportsCellSelection: false
+      },
+      {
+        title: 'Col1',
+        value: function(row) { return row.b; },
+        width: '33%'
+      },
+      {
+        title: 'Col2',
+        value: function(row) { return row.b * 2; },
+        width: '33%'
+      },
+      {
+        title: 'Col3',
+        value: function(row) { return row.b * 3; },
+        width: '33%'
+      }
+    ];
+    var rows = [
+      {
+        a: 'first',
+        b: '1'
+      },
+      {
+        a: 'second',
+        b: '2'
+      }
+    ];
 
-    table.selectedTableColumn = undefined;
-    assert.strictEqual(eventCount, 3);
-    assert.isUndefined(table.selectedTableColumn);
+    var table = document.createElement('tr-ui-b-table');
+
+    var firedStepIntoEvents = [];
+    table.addEventListener('step-into', e => firedStepIntoEvents.push(e));
+
+    table.cellHighlightStyle = HighlightStyle.DARK;
+    table.tableColumns = columns;
+    table.tableRows = rows;
+    table.rebuild();
+    this.addHTMLOutput(table);
+
+    assert.lengthOf(firedStepIntoEvents, 0);
+
+    // Double click.
+    simulateDoubleClick(table.$.body.children[0].children[1]);
+    assert.lengthOf(firedStepIntoEvents, 1);
+    assert.strictEqual(firedStepIntoEvents[0].tableRow, rows[0]);
+    assert.strictEqual(firedStepIntoEvents[0].tableColumn, columns[1]);
+    assert.strictEqual(firedStepIntoEvents[0].columnIndex, 1);
+
+    simulateDoubleClick(table.$.body.children[1].children[3]);
+    assert.lengthOf(firedStepIntoEvents, 2);
+    assert.strictEqual(firedStepIntoEvents[1].tableRow, rows[1]);
+    assert.strictEqual(firedStepIntoEvents[1].tableColumn, columns[3]);
+    assert.strictEqual(firedStepIntoEvents[1].columnIndex, 3);
+
+    // Shift+Enter in cell selection mode.
+    table.selectionMode = SelectionMode.CELL;
+    table.selectedTableRow = rows[0];
+    table.selectedColumnIndex = 2;
+    table.performKeyCommand_('ENTER');
+    assert.lengthOf(firedStepIntoEvents, 3);
+    assert.strictEqual(firedStepIntoEvents[2].tableRow, rows[0]);
+    assert.strictEqual(firedStepIntoEvents[2].tableColumn, columns[2]);
+    assert.strictEqual(firedStepIntoEvents[2].columnIndex, 2);
+
+    // Shift+Enter in row selection mode.
+    table.selectionMode = SelectionMode.ROW;
+    table.selectedTableRow = rows[1];
+    table.performKeyCommand_('ENTER');
+    assert.lengthOf(firedStepIntoEvents, 4);
+    assert.strictEqual(firedStepIntoEvents[3].tableRow, rows[1]);
+    assert.isUndefined(firedStepIntoEvents[3].tableColumn);
+    assert.isUndefined(firedStepIntoEvents[3].columnIndex);
   });
 });
 </script>
