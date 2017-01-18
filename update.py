@@ -3,7 +3,7 @@
 import codecs, httplib, json, optparse, os, urllib, shutil, subprocess, sys
 
 upstream_git = 'https://github.com/catapult-project/catapult.git'
-PACKAGE_DIRS = ['common', 'dependency_manager', 'devil', 'systrace']
+PACKAGE_DIRS = ['common', 'dependency_manager', 'devil', 'systrace', 'telemetry']
 IGNORE_PATTERNS = ['OWNERS'] # doesn't make sense to sync owners files
 
 script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
