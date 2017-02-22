@@ -4,6 +4,7 @@ import codecs, httplib, json, optparse, os, urllib, shutil, subprocess, sys
 
 upstream_git = 'https://github.com/catapult-project/catapult.git'
 PACKAGE_DIRS = ['common', 'dependency_manager', 'devil', 'systrace', 'telemetry']
+IGNORE_PATTERNS = ['OWNERS'] # doesn't make sense to sync owners files
 
 script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
 catapult_src_dir = os.path.join(script_dir, 'catapult-upstream')
@@ -60,4 +61,5 @@ update_systrace_trace_viewer.update(no_auto_update=True, no_min=options.no_min)
 shutil.rmtree(catapult_dst_dir)
 for d in PACKAGE_DIRS:
   shutil.copytree(os.path.join(catapult_src_dir, d),
-    os.path.join(catapult_dst_dir, d))
+                  os.path.join(catapult_dst_dir, d),
+                  ignore=shutil.ignore_patterns(*IGNORE_PATTERNS))
