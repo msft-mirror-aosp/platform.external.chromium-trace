@@ -4,11 +4,13 @@
 
 import dependency_manager
 import logging
+import mock
 import unittest
 
 from battor import battor_error
 from battor import battor_wrapper
 from devil.utils import battor_device_mapping
+from devil.utils import cmd_helper
 from devil.utils import find_usb_devices
 
 import serial
@@ -18,11 +20,15 @@ from serial.tools import list_ports
 class DependencyManagerMock(object):
   def __init__(self, _):
     self._fetch_return = 'path'
+    self._version_return = 'cbaa843'
 
   def FetchPath(self, _, *unused):
     del unused
     return self._fetch_return
 
+  def FetchPathWithVersion(self, _, *unused):
+    del unused
+    return self._fetch_return, self._version_return
 
 class PopenMock(object):
   def __init__(self, *unused):
@@ -135,6 +141,8 @@ class BattOrWrapperTest(unittest.TestCase):
     self._battor_list = ['battor1']
     self._should_pass = True
     self._fake_map = {'battor1': 'device1'}
+    self._fake_return_code = None
+    self._fake_battor_return = 'Done.\n'
 
     self._get_battor_path_from_phone_serial = (
         battor_device_mapping.GetBattOrPathFromPhoneSerial)
@@ -146,7 +154,6 @@ class BattOrWrapperTest(unittest.TestCase):
     self._generate_serial_map = battor_device_mapping.GenerateSerialMap
     self._serial_tools = serial.tools.list_ports.comports
 
-
     battor_device_mapping.GetBattOrPathFromPhoneSerial = (
         lambda x, serial_map_file=None, serial_map=None: x + '_battor')
     find_usb_devices.GetBusNumberToDeviceTreeMap = lambda fast=False: True
@@ -155,6 +162,10 @@ class BattOrWrapperTest(unittest.TestCase):
     battor_device_mapping.IsBattOr = lambda x, y: self._is_battor
     battor_device_mapping.GenerateSerialMap = lambda: self._fake_map
     serial.tools.list_ports.comports = lambda: [('COM4', 'USB Serial Port', '')]
+    self._cmd_helper_return = (0, 'cbaa843')
+    self._get_cmd_status_and_output = cmd_helper.GetCmdStatusAndOutput
+    cmd_helper.GetCmdStatusAndOutput = (
+        lambda args, cwd=None, shell=None: self._cmd_helper_return)
 
   def tearDown(self):
     battor_device_mapping.GetBattOrPathFromPhoneSerial = (
@@ -166,12 +177,14 @@ class BattOrWrapperTest(unittest.TestCase):
     battor_device_mapping.IsBattOr = self._is_battor
     battor_device_mapping.GenerateSerialMap = self._generate_serial_map
     serial.tools.list_ports.comports = self._serial_tools
+    cmd_helper.GetCmdStatusAndOutput = self._get_cmd_status_and_output
 
   def _DefaultBattOrReplacements(self):
     self._battor._StartShellImpl = lambda *unused: PopenMock()
-    self._battor.GetShellReturnCode = lambda *unused: None
-    self._battor._SendBattOrCommandImpl = lambda x: 'Done.\n'
-    self._battor._StopTracingImpl = lambda *unused: ('Done.\n', None)
+    self._battor.GetShellReturnCode = lambda *unused: self._fake_return_code
+    self._battor._SendBattOrCommandImpl = lambda x: self._fake_battor_return
+    self._battor._StopTracingImpl = lambda *unused: (self._fake_battor_return,
+                                                     None)
 
   def testBadPlatform(self):
     with self.assertRaises(battor_error.BattOrError):
@@ -268,6 +281,85 @@ class BattOrWrapperTest(unittest.TestCase):
     self._DefaultBattOrReplacements()
     with self.assertRaises(AssertionError):
       self._battor.StopTracing()
+
+  def testFlashFirmwarePass(self):
+    self._battor = battor_wrapper.BattOrWrapper('linux')
+    self._DefaultBattOrReplacements()
+    self.assertTrue(self._battor.FlashFirmware('hex_path', 'config_path'))
+
+  def testFlashFirmwareFail(self):
+    self._cmd_helper_return = (1, 'Fail')
+    self._battor = battor_wrapper.BattOrWrapper('linux')
+    self._DefaultBattOrReplacements()
+    with self.assertRaises(battor_wrapper.BattOrFlashError):
+      self._battor.FlashFirmware('hex_path', 'config_path')
+
+  def testFlashFirmwarePlatformNotSupported(self):
+    self._cmd_helper_return = (1, 'Fail')
+    self._battor = battor_wrapper.BattOrWrapper('win')
+    self._DefaultBattOrReplacements()
+    self._battor._target_platform = 'unsupported_platform'
+    self.assertFalse(self._battor.FlashFirmware('hex_path', 'config_path'))
+
+  def testFlashFirmwareShellRunning(self):
+    self._battor = battor_wrapper.BattOrWrapper('linux')
+    self._DefaultBattOrReplacements()
+    self._battor.StartShell()
+    with self.assertRaises(AssertionError):
+      self._battor.FlashFirmware('hex_path', 'config_path')
+
+  def testGetFirmwareGitHashNotRunning(self):
+    self._battor = battor_wrapper.BattOrWrapper('win')
+    self._DefaultBattOrReplacements()
+    with self.assertRaises(AssertionError):
+      self._battor.GetFirmwareGitHash()
+
+  def testGetFirmwareGitHashPass(self):
+    self._battor = battor_wrapper.BattOrWrapper('win')
+    self._DefaultBattOrReplacements()
+    self._battor.StartShell()
+    self._battor.GetFirmwareGitHash = lambda: 'cbaa843'
+    self.assertTrue(isinstance(self._battor.GetFirmwareGitHash(), basestring))
+
+  def testStopShellPass(self):
+    self._battor = battor_wrapper.BattOrWrapper('win')
+    self._DefaultBattOrReplacements()
+    self._battor.StartShell()
+    self._fake_return_code = 0
+    self._battor.StopShell()
+    self.assertIsNone(self._battor._battor_shell)
+
+  @mock.patch('time.sleep', mock.Mock)
+  def testStopShellTimeOutAndKill(self):
+    self._battor = battor_wrapper.BattOrWrapper('win')
+    self._DefaultBattOrReplacements()
+    self._battor.StartShell()
+    self._battor.StopShell()
+    self.assertIsNone(self._battor._battor_shell)
+
+  def testStopShellNotStarted(self):
+    self._battor = battor_wrapper.BattOrWrapper('win')
+    self._DefaultBattOrReplacements()
+    with self.assertRaises(AssertionError):
+      self._battor.StopShell()
+
+  @mock.patch('time.sleep', mock.Mock)
+  def testFlashBattOrSameGitHash(self):
+    self._battor = battor_wrapper.BattOrWrapper('linux')
+    self._DefaultBattOrReplacements()
+    self._battor.StartShell()
+    self._battor.GetFirmwareGitHash = lambda: 'cbaa843'
+    dependency_manager.DependencyManager._version_return = 'cbaa843'
+    self.assertFalse(self._battor._FlashBattOr())
+
+  @mock.patch('time.sleep', mock.Mock)
+  def testFlashBattOrDifferentGitHash(self):
+    self._battor = battor_wrapper.BattOrWrapper('linux')
+    self._DefaultBattOrReplacements()
+    self._battor.StartShell()
+    self._battor.GetFirmwareGitHash = lambda: 'bazz732'
+    dependency_manager.DependencyManager._version_return = 'cbaa843'
+    self.assertTrue(self._battor._FlashBattOr())
 
 
 if __name__ == '__main__':
