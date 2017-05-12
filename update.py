@@ -3,7 +3,7 @@
 import codecs, httplib, json, optparse, os, urllib, shutil, subprocess, sys
 
 upstream_git = 'https://github.com/catapult-project/catapult.git'
-PACKAGE_DIRS = ['common', 'dependency_manager', 'devil', 'systrace']
+PACKAGE_DIRS = ['common', 'dependency_manager', 'devil', 'systrace', 'third_party/pyserial']
 
 script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
 catapult_src_dir = os.path.join(script_dir, 'catapult-upstream')
