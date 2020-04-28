@@ -1,13 +1,9 @@
 # Copyright 2018 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import functools
 import logging
 import time
-from six.moves import range # pylint: disable=redefined-builtin
 
 
 def RetryOnException(exc_type, retries):
@@ -46,7 +42,7 @@ def RetryOnException(exc_type, retries):
     def Wrapper(*args, **kwargs):
       wait = 1
       kwargs.setdefault('retries', retries)
-      for _ in range(kwargs['retries']):
+      for _ in xrange(kwargs['retries']):
         try:
           return f(*args, **kwargs)
         except exc_type as exc:

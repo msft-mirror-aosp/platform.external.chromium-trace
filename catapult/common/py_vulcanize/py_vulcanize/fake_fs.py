@@ -2,19 +2,14 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import codecs
-import collections
 import os
 import sys
+import collections
+import StringIO
 
-import six
 
-
-class WithableStringIO(six.StringIO):
+class WithableStringIO(StringIO.StringIO):
 
   def __enter__(self, *args):
     return self
@@ -28,7 +23,7 @@ class FakeFS(object):
   def __init__(self, initial_filenames_and_contents=None):
     self._file_contents = {}
     if initial_filenames_and_contents:
-      for k, v in six.iteritems(initial_filenames_and_contents):
+      for k, v in initial_filenames_and_contents.iteritems():
         self._file_contents[k] = v
 
     self._bound = False
@@ -111,7 +106,7 @@ class FakeFS(object):
 
   def _FakeWalk(self, top):
     assert os.path.isabs(top)
-    all_filenames = list(self._file_contents.keys())
+    all_filenames = self._file_contents.keys()
     pending_prefixes = collections.deque()
     pending_prefixes.append(top)
     visited_prefixes = set()

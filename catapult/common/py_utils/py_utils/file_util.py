@@ -17,7 +17,7 @@ def CopyFileWithIntermediateDirectories(source_path, dest_path):
   assert os.path.exists(source_path)
   try:
     os.makedirs(os.path.dirname(dest_path))
-  except OSError as e:
+  except OSError, e:
     if e.errno != errno.EEXIST:
       raise
   shutil.copy(source_path, dest_path)

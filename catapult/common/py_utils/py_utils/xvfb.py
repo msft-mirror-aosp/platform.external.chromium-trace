@@ -10,8 +10,6 @@ import time
 
 
 def ShouldStartXvfb():
-  # TODO(crbug.com/973847): Note that you can locally change this to return
-  # False to diagnose timeouts for dev server tests.
   return platform.system() == 'Linux'
 
 

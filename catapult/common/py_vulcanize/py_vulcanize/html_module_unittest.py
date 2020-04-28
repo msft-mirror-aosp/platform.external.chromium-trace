@@ -2,12 +2,9 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import unittest
+import StringIO
 
 from py_vulcanize import fake_fs
 from py_vulcanize import generate
@@ -17,7 +14,6 @@ from py_vulcanize import parse_html_deps
 from py_vulcanize import project as project_module
 from py_vulcanize import resource
 from py_vulcanize import resource_loader as resource_loader
-import six
 
 
 class ResourceWithFakeContents(resource.Resource):
@@ -44,7 +40,7 @@ class FakeLoader(object):
     self._source_paths = source_paths
     self._file_contents = {}
     if initial_filenames_and_contents:
-      for k, v in six.iteritems(initial_filenames_and_contents):
+      for k, v in initial_filenames_and_contents.iteritems():
         self._file_contents[k] = v
 
   def FindResourceGivenAbsolutePath(self, absolute_path):
@@ -276,7 +272,7 @@ console.log('/raw/raw_script.js was written');
       loader = resource_loader.ResourceLoader(project)
       my_component = loader.LoadModule(module_name='a.b.my_component')
 
-      f = six.StringIO()
+      f = StringIO.StringIO()
       my_component.AppendJSContentsToFile(
           f,
           use_include_tags_for_scripts=False,
@@ -313,7 +309,7 @@ console.log('/raw/raw_script.js was written');
                         set([os.path.normpath('/tmp/a/b/my_component.html'),
                              os.path.normpath('/tmp/a/something.jpg')]))
 
-      f = six.StringIO()
+      f = StringIO.StringIO()
       ctl = html_generation_controller.HTMLGenerationController()
       my_component.AppendHTMLContentsToFile(f, ctl)
       html = f.getvalue().rstrip()

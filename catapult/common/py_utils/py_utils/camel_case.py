@@ -2,11 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import re
-import six
 
 
 def ToUnderscore(obj):
@@ -15,7 +11,7 @@ def ToUnderscore(obj):
   Descends recursively into lists and dicts, converting all dict keys.
   Returns a newly allocated object of the same structure as the input.
   """
-  if isinstance(obj, six.string_types):
+  if isinstance(obj, basestring):
     return re.sub('(?!^)([A-Z]+)', r'_\1', obj).lower()
 
   elif isinstance(obj, list):
@@ -23,7 +19,7 @@ def ToUnderscore(obj):
 
   elif isinstance(obj, dict):
     output = {}
-    for k, v in six.iteritems(obj):
+    for k, v in obj.iteritems():
       if isinstance(v, list) or isinstance(v, dict):
         output[ToUnderscore(k)] = ToUnderscore(v)
       else:

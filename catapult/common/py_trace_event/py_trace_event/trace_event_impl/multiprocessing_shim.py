@@ -86,3 +86,7 @@ class ProcessShim():
 
   def __repr__(self):
     return self._proc.__repr__()
+
+# Monkeypatch in our process replacement.
+if multiprocessing.Process != ProcessShim:
+  multiprocessing.Process = ProcessShim

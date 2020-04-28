@@ -10,7 +10,6 @@ import contextlib
 import logging
 import os
 import posixpath
-import re
 import sys
 
 
@@ -32,19 +31,6 @@ from devil.utils import run_tests_helper
 logger = logging.getLogger(__name__)
 
 
-# Some system apps aren't actually installed in the /system/ directory, so
-# special case them here with the correct install location.
-SPECIAL_SYSTEM_APP_LOCATIONS = {
-  # This also gets installed in /data/app when not a system app, so this script
-  # will remove either version. This doesn't appear to cause any issues, but
-  # will cause a few unnecessary reboots if this is the only package getting
-  # removed and it's already not a system app.
-  'com.google.ar.core': '/data/app/',
-}
-
-# Gets app path and package name pm list packages -f output.
-_PM_LIST_PACKAGE_PATH_RE = re.compile(r'^\s*package:(\S+)=(\S+)\s*$')
-
 def RemoveSystemApps(device, package_names):
   """Removes the given system apps.
 
@@ -60,8 +46,7 @@ def RemoveSystemApps(device, package_names):
 
 
 @contextlib.contextmanager
-def ReplaceSystemApp(device, package_name, replacement_apk,
-                     install_timeout=None):
+def ReplaceSystemApp(device, package_name, replacement_apk):
   """A context manager that replaces the given system app while in scope.
 
   Args:
@@ -72,7 +57,7 @@ def ReplaceSystemApp(device, package_name, replacement_apk,
   """
   storage_dir = device_temp_file.NamedDeviceTemporaryDirectory(device.adb)
   relocate_app = _RelocateApp(device, package_name, storage_dir.name)
-  install_app = _TemporarilyInstallApp(device, replacement_apk, install_timeout)
+  install_app = _TemporarilyInstallApp(device, replacement_apk)
   with storage_dir, relocate_app, install_app:
     yield
 
@@ -81,36 +66,8 @@ def _FindSystemPackagePaths(device, system_package_list):
   """Finds all system paths for the given packages."""
   found_paths = []
   for system_package in system_package_list:
-    paths = _GetApplicationPaths(device, system_package)
-    p = _GetSystemPath(system_package, paths)
-    if p:
-      found_paths.append(p)
-  return found_paths
-
-
-# Find all application paths, even those flagged as uninstalled, as these
-# would still block another package with the same name from installation
-# if they differ in signing keys.
-# TODO(aluo): Move this into device_utils.py
-def _GetApplicationPaths(device, package):
-  paths = []
-  lines = device.RunShellCommand(['pm', 'list', 'packages', '-f', '-u',
-                                  package], check_return=True)
-  for line in lines:
-    match = re.match(_PM_LIST_PACKAGE_PATH_RE, line)
-    if match:
-      path = match.group(1)
-      package_name = match.group(2)
-      if package_name == package:
-        paths.append(path)
-  return paths
-
-
-def _GetSystemPath(package, paths):
-  for p in paths:
-    if p.startswith(SPECIAL_SYSTEM_APP_LOCATIONS.get(package, '/system/')):
-      return p
-  return None
+    found_paths.extend(device.GetApplicationPaths(system_package))
+  return [p for p in found_paths if p.startswith('/system/')]
 
 
 _ENABLE_MODIFICATION_PROP = 'devil.modify_sys_apps'
@@ -127,12 +84,6 @@ def EnableSystemAppModification(device):
     yield
     return
 
-  # All calls that could potentially need root should run with as_root=True, but
-  # it looks like some parts of Telemetry work as-is by implicitly assuming that
-  # root is already granted if it's necessary. The reboot can mess with this, so
-  # as a workaround, check whether we're starting with root already, and if so,
-  # restore the device to that state at the end.
-  should_restore_root = device.HasRoot()
   device.EnableRoot()
   if not device.HasRoot():
     raise device_errors.CommandFailedError(
@@ -156,8 +107,6 @@ def EnableSystemAppModification(device):
     device.SetProp(_ENABLE_MODIFICATION_PROP, '0')
     device.Reboot()
     device.WaitUntilFullyBooted()
-    if should_restore_root:
-      device.EnableRoot()
 
 
 @contextlib.contextmanager
@@ -187,13 +136,9 @@ def _RelocateApp(device, package_name, relocate_to):
 
 
 @contextlib.contextmanager
-def _TemporarilyInstallApp(device, apk, install_timeout=None):
+def _TemporarilyInstallApp(device, apk):
   """A context manager that installs an app while in scope."""
-  if install_timeout is None:
-    device.Install(apk, reinstall=True)
-  else:
-    device.Install(apk, reinstall=True, timeout=install_timeout)
-
+  device.Install(apk, reinstall=True)
   try:
     yield
   finally:

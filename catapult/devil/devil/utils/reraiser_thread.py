@@ -11,14 +11,12 @@ import threading
 import time
 import traceback
 
-from devil import base_error
 from devil.utils import watchdog_timer
 
 
-class TimeoutError(base_error.BaseError):
+class TimeoutError(Exception):
   """Module-specific timeout exception."""
-  def __init__(self, message):
-    super(TimeoutError, self).__init__(message)
+  pass
 
 
 def LogThreadStack(thread, error_log_func=logging.critical):
@@ -69,17 +67,10 @@ class ReraiserThread(threading.Thread):
     self._exc_info = None
     self._thread_group = None
 
-  if sys.version_info < (3,):
-    # pylint: disable=exec-used
-    exec('''def ReraiseIfException(self):
-  """Reraise exception if an exception was raised in the thread."""
-  if self._exc_info:
-    raise self._exc_info[0], self._exc_info[1], self._exc_info[2]''')
-  else:
-    def ReraiseIfException(self):
-      """Reraise exception if an exception was raised in the thread."""
-      if self._exc_info:
-        raise self._exc_info[1]
+  def ReraiseIfException(self):
+    """Reraise exception if an exception was raised in the thread."""
+    if self._exc_info:
+      raise self._exc_info[0], self._exc_info[1], self._exc_info[2]
 
   def GetReturnValue(self):
     """Reraise exception if present, otherwise get the return value."""
