@@ -14,6 +14,7 @@ PACKAGE_DIRS = [
     'systrace',
     'third_party/pyserial',
     'third_party/zipfile',
+    'third_party/polymer',
     'tracing/tracing/trace_data',
 ]
 PACKAGE_FILES = [
