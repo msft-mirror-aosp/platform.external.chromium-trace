@@ -2,6 +2,7 @@
 # Copyright 2015 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """Captures a video from an Android device."""
 
 import argparse
@@ -12,9 +13,8 @@ import time
 import sys
 
 if __name__ == '__main__':
-  sys.path.append(
-      os.path.abspath(
-          os.path.join(os.path.dirname(__file__), '..', '..', '..')))
+  sys.path.append(os.path.abspath(os.path.join(
+      os.path.dirname(__file__), '..', '..', '..')))
 from devil.android import device_signal
 from devil.android import device_utils
 from devil.android.tools import script_common
@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 class VideoRecorder(object):
   """Records a screen capture video from an Android Device (KitKat or newer)."""
 
-  def __init__(self, device, megabits_per_second=4, size=None, rotate=False):
+  def __init__(self, device, megabits_per_second=4, size=None,
+               rotate=False):
     """Creates a VideoRecorder instance.
 
     Args:
@@ -43,7 +44,7 @@ class VideoRecorder(object):
     self._bit_rate = megabits_per_second * 1000 * 1000
     self._device = device
     self._device_file = (
-        '%s/screen-recording.mp4' % device.GetAppWritablePath())
+        '%s/screen-recording.mp4' % device.GetExternalStoragePath())
     self._recorder_thread = None
     self._rotate = rotate
     self._size = size
@@ -54,7 +55,6 @@ class VideoRecorder(object):
 
   def Start(self, timeout=None):
     """Start recording video."""
-
     def screenrecord_started():
       return bool(self._device.GetPids('screenrecord'))
 
@@ -85,8 +85,8 @@ class VideoRecorder(object):
 
   def Stop(self):
     """Stop recording video."""
-    if not self._device.KillAll(
-        'screenrecord', signum=device_signal.SIGINT, quiet=True):
+    if not self._device.KillAll('screenrecord', signum=device_signal.SIGINT,
+                                quiet=True):
       logger.warning('Nothing to kill: screenrecord was not running')
     self._recorder_thread.join()
 
@@ -100,8 +100,11 @@ class VideoRecorder(object):
     """
     # TODO(jbudorick): Merge filename generation with the logic for doing so in
     # DeviceUtils.
-    host_file_name = (host_file or 'screen-recording-%s-%s.mp4' % (str(
-        self._device), time.strftime('%Y%m%dT%H%M%S', time.localtime())))
+    host_file_name = (
+        host_file
+        or 'screen-recording-%s-%s.mp4' % (
+            str(self._device),
+            time.strftime('%Y%m%dT%H%M%S', time.localtime())))
     host_file_name = os.path.abspath(host_file_name)
     self._device.PullFile(self._device_file, host_file_name)
     self._device.RemovePath(self._device_file, force=True)
@@ -111,34 +114,24 @@ class VideoRecorder(object):
 def main():
   # Parse options.
   parser = argparse.ArgumentParser(description=__doc__)
-  script_common.AddDeviceArguments(parser)
-  parser.add_argument(
-      '-f',
-      '--file',
-      metavar='FILE',
-      help='Save result to file instead of generating a '
-      'timestamped file name.')
-  parser.add_argument(
-      '-v', '--verbose', action='store_true', help='Verbose logging.')
-  parser.add_argument(
-      '-b',
-      '--bitrate',
-      default=4,
-      type=float,
-      help='Bitrate in megabits/s, from 0.1 to 100 mbps, '
-      '%(default)d mbps by default.')
-  parser.add_argument(
-      '-r', '--rotate', action='store_true', help='Rotate video by 90 degrees.')
-  parser.add_argument(
-      '-s',
-      '--size',
-      metavar='WIDTHxHEIGHT',
-      help='Frame size to use instead of the device '
-      'screen size.')
-  parser.add_argument(
-      'host_file',
-      nargs='?',
-      help='File to which the video capture will be written.')
+  parser.add_argument('-d', '--device', dest='devices', action='append',
+                      help='Serial number of Android device to use.')
+  parser.add_argument('--blacklist-file', help='Device blacklist JSON file.')
+  parser.add_argument('-f', '--file', metavar='FILE',
+                      help='Save result to file instead of generating a '
+                           'timestamped file name.')
+  parser.add_argument('-v', '--verbose', action='store_true',
+                      help='Verbose logging.')
+  parser.add_argument('-b', '--bitrate', default=4, type=float,
+                      help='Bitrate in megabits/s, from 0.1 to 100 mbps, '
+                           '%(default)d mbps by default.')
+  parser.add_argument('-r', '--rotate', action='store_true',
+                      help='Rotate video by 90 degrees.')
+  parser.add_argument('-s', '--size', metavar='WIDTHxHEIGHT',
+                      help='Frame size to use instead of the device '
+                           'screen size.')
+  parser.add_argument('host_file', nargs='?',
+                      help='File to which the video capture will be written.')
 
   args = parser.parse_args()
 
@@ -147,7 +140,9 @@ def main():
   if args.verbose:
     logging.getLogger().setLevel(logging.DEBUG)
 
-  size = (tuple(int(i) for i in args.size.split('x')) if args.size else None)
+  size = (tuple(int(i) for i in args.size.split('x'))
+          if args.size
+          else None)
 
   def record_video(device, stop_recording):
     recorder = VideoRecorder(
@@ -162,9 +157,9 @@ def main():
     f = recorder.Pull(f)
     print 'Video written to %s' % os.path.abspath(f)
 
-  parallel_devices = device_utils.DeviceUtils.parallel(script_common.GetDevices(
-      args.devices, args.denylist_file),
-                                                       asyn=True)
+  parallel_devices = device_utils.DeviceUtils.parallel(
+      script_common.GetDevices(args.devices, args.blacklist_file),
+      async=True)
   stop_recording = threading.Event()
   running_recording = parallel_devices.pMap(record_video, stop_recording)
   print 'Recording. Press Enter to stop.',

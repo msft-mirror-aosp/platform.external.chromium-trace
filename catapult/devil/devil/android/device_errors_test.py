@@ -11,6 +11,7 @@ from devil.android import device_errors
 
 
 class DeviceErrorsTest(unittest.TestCase):
+
   def assertIsPicklable(self, original):
     pickled = pickle.dumps(original)
     reconstructed = pickle.loads(pickled)
@@ -18,9 +19,7 @@ class DeviceErrorsTest(unittest.TestCase):
 
   def testPicklable_AdbCommandFailedError(self):
     original = device_errors.AdbCommandFailedError(
-        ['these', 'are', 'adb', 'args'],
-        'adb failure output',
-        status=':(',
+        ['these', 'are', 'adb', 'args'], 'adb failure output', status=':(',
         device_serial='0123456789abcdef')
     self.assertIsPicklable(original)
 
@@ -30,15 +29,18 @@ class DeviceErrorsTest(unittest.TestCase):
     self.assertIsPicklable(original)
 
   def testPicklable_CommandFailedError(self):
-    original = device_errors.CommandFailedError('sample command failed')
+    original = device_errors.CommandFailedError(
+        'sample command failed')
     self.assertIsPicklable(original)
 
   def testPicklable_CommandTimeoutError(self):
-    original = device_errors.CommandTimeoutError('My fake command timed out :(')
+    original = device_errors.CommandTimeoutError(
+        'My fake command timed out :(')
     self.assertIsPicklable(original)
 
   def testPicklable_DeviceChargingError(self):
-    original = device_errors.DeviceChargingError('Fake device failed to charge')
+    original = device_errors.DeviceChargingError(
+        'Fake device failed to charge')
     self.assertIsPicklable(original)
 
   def testPicklable_DeviceUnreachableError(self):
@@ -47,10 +49,8 @@ class DeviceErrorsTest(unittest.TestCase):
 
   def testPicklable_FastbootCommandFailedError(self):
     original = device_errors.FastbootCommandFailedError(
-        ['these', 'are', 'fastboot', 'args'],
-        'fastboot failure output',
-        status=':(',
-        device_serial='0123456789abcdef')
+        ['these', 'are', 'fastboot', 'args'], 'fastboot failure output',
+        status=':(', device_serial='0123456789abcdef')
     self.assertIsPicklable(original)
 
   def testPicklable_MultipleDevicesError(self):
@@ -65,6 +65,7 @@ class DeviceErrorsTest(unittest.TestCase):
   def testPicklable_NoDevicesError(self):
     original = device_errors.NoDevicesError()
     self.assertIsPicklable(original)
+
 
 
 if __name__ == '__main__':

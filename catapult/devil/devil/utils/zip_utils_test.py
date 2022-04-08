@@ -6,14 +6,12 @@ import os
 import unittest
 import zipfile
 
-from devil import devil_env
 from devil.utils import zip_utils
-
-with devil_env.SysPath(devil_env.PY_UTILS_PATH):
-  from py_utils import tempfile_ext
+from py_utils import tempfile_ext
 
 
 class WriteZipFileTest(unittest.TestCase):
+
   def testSimple(self):
     with tempfile_ext.NamedTemporaryDirectory() as working_dir:
       file1 = os.path.join(working_dir, 'file1.txt')
@@ -25,8 +23,8 @@ class WriteZipFileTest(unittest.TestCase):
         f2.write('file2')
 
       zip_tuples = [
-          (file1, 'foo/file1.txt'),
-          (file2, 'bar/file2.txt'),
+        (file1, 'foo/file1.txt'),
+        (file2, 'bar/file2.txt'),
       ]
 
       zip_path = os.path.join(working_dir, 'out.zip')
@@ -36,8 +34,10 @@ class WriteZipFileTest(unittest.TestCase):
 
       actual = zipfile.ZipFile(zip_path)
       expected_files = [
-          'foo/file1.txt',
-          'bar/file2.txt',
+        'foo/file1.txt',
+        'bar/file2.txt',
       ]
 
-      self.assertEquals(sorted(expected_files), sorted(actual.namelist()))
+      self.assertEquals(
+          sorted(expected_files),
+          sorted(actual.namelist()))

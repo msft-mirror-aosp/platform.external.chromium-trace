@@ -1,6 +1,7 @@
 # Copyright (c) 2012 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """A wrapper for subprocess to make calling shell commands easier."""
 
 import codecs
@@ -10,18 +11,10 @@ import pipes
 import select
 import signal
 import string
+import StringIO
 import subprocess
 import sys
 import time
-
-CATAPULT_ROOT_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-SIX_PATH = os.path.join(CATAPULT_ROOT_PATH, 'third_party', 'six')
-
-if SIX_PATH not in sys.path:
-  sys.path.append(SIX_PATH)
-
-import six
 
 from devil import base_error
 
@@ -31,8 +24,7 @@ _SafeShellChars = frozenset(string.ascii_letters + string.digits + '@%_-+=:,./')
 
 # Cache the string-escape codec to ensure subprocess can find it
 # later. Return value doesn't matter.
-if six.PY2:
-  codecs.lookup('string-escape')
+codecs.lookup('string-escape')
 
 
 def SingleQuote(s):
@@ -94,7 +86,6 @@ def ShrinkToSnippet(cmd_parts, var_name, var_value):
   Returns:
     A shell snippet that does not include setting the variable.
   """
-
   def shrink(value):
     parts = (x and SingleQuote(x) for x in value.split(var_value))
     with_substitutions = ('"$%s"' % var_name).join(parts)
@@ -103,59 +94,23 @@ def ShrinkToSnippet(cmd_parts, var_name, var_value):
   return ' '.join(shrink(part) for part in cmd_parts)
 
 
-def Popen(args,
-          stdin=None,
-          stdout=None,
-          stderr=None,
-          shell=None,
-          cwd=None,
-          env=None):
+def Popen(args, stdout=None, stderr=None, shell=None, cwd=None, env=None):
   # preexec_fn isn't supported on windows.
-  # pylint: disable=unexpected-keyword-arg
   if sys.platform == 'win32':
-    close_fds = (stdin is None and stdout is None and stderr is None)
+    close_fds = (stdout is None and stderr is None)
     preexec_fn = None
   else:
     close_fds = True
     preexec_fn = lambda: signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-  if six.PY2:
-    return subprocess.Popen(
-      args=args,
-      cwd=cwd,
-      stdin=stdin,
-      stdout=stdout,
-      stderr=stderr,
-      shell=shell,
-      close_fds=close_fds,
-      env=env,
-      preexec_fn=preexec_fn
-    )
-  else:
-    # opens stdout in text mode, so that caller side always get 'str',
-    # and there will be no type mismatch error.
-    # Ignore any decoding error, so that caller will not crash due to
-    # uncaught exception. Decoding errors are unavoidable, as we
-    # do not know the encoding of the output, and in some output there
-    # will be multiple encodings (e.g. adb logcat)
-    return subprocess.Popen(
-      args=args,
-      cwd=cwd,
-      stdin=stdin,
-      stdout=stdout,
-      stderr=stderr,
-      shell=shell,
-      close_fds=close_fds,
-      env=env,
-      preexec_fn=preexec_fn,
-      universal_newlines=True,
-      encoding='utf-8',
-      errors='ignore'
-    )
+  return subprocess.Popen(
+      args=args, cwd=cwd, stdout=stdout, stderr=stderr,
+      shell=shell, close_fds=close_fds, env=env, preexec_fn=preexec_fn)
+
 
 def Call(args, stdout=None, stderr=None, shell=None, cwd=None, env=None):
-  pipe = Popen(
-      args, stdout=stdout, stderr=stderr, shell=shell, cwd=cwd, env=env)
+  pipe = Popen(args, stdout=stdout, stderr=stderr, shell=shell, cwd=cwd,
+               env=env)
   pipe.communicate()
   return pipe.wait()
 
@@ -172,7 +127,7 @@ def RunCmd(args, cwd=None):
   Returns:
     Return code from the command execution.
   """
-  logger.debug(str(args) + ' ' + (cwd or ''))
+  logger.info(str(args) + ' ' + (cwd or ''))
   return Call(args, cwd=cwd)
 
 
@@ -197,7 +152,7 @@ def GetCmdOutput(args, cwd=None, shell=False, env=None):
 
 
 def _ValidateAndLogCommand(args, cwd, shell):
-  if isinstance(args, six.string_types):
+  if isinstance(args, basestring):
     if not shell:
       raise Exception('string args must be run with shell=True')
   else:
@@ -212,11 +167,7 @@ def _ValidateAndLogCommand(args, cwd, shell):
   return args
 
 
-def GetCmdStatusAndOutput(args,
-                          cwd=None,
-                          shell=False,
-                          env=None,
-                          merge_stderr=False):
+def GetCmdStatusAndOutput(args, cwd=None, shell=False, env=None):
   """Executes a subprocess and returns its exit code and output.
 
   Args:
@@ -228,13 +179,12 @@ def GetCmdStatusAndOutput(args,
       is a string and False if args is a sequence.
     env: If not None, a mapping that defines environment variables for the
       subprocess.
-    merge_stderr: If True, captures stderr as part of stdout.
 
   Returns:
     The 2-tuple (exit code, stdout).
   """
   status, stdout, stderr = GetCmdStatusOutputAndError(
-      args, cwd=cwd, shell=shell, env=env, merge_stderr=merge_stderr)
+      args, cwd=cwd, shell=shell, env=env)
 
   if stderr:
     logger.critical('STDERR: %s', stderr)
@@ -260,20 +210,11 @@ def StartCmd(args, cwd=None, shell=False, env=None):
     A process handle from subprocess.Popen.
   """
   _ValidateAndLogCommand(args, cwd, shell)
-  return Popen(
-      args,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.PIPE,
-      shell=shell,
-      cwd=cwd,
-      env=env)
+  return Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+               shell=shell, cwd=cwd, env=env)
 
 
-def GetCmdStatusOutputAndError(args,
-                               cwd=None,
-                               shell=False,
-                               env=None,
-                               merge_stderr=False):
+def GetCmdStatusOutputAndError(args, cwd=None, shell=False, env=None):
   """Executes a subprocess and returns its exit code, output, and errors.
 
   Args:
@@ -285,20 +226,13 @@ def GetCmdStatusOutputAndError(args,
       is a string and False if args is a sequence.
     env: If not None, a mapping that defines environment variables for the
       subprocess.
-    merge_stderr: If True, captures stderr as part of stdout.
 
   Returns:
     The 3-tuple (exit code, stdout, stderr).
   """
   _ValidateAndLogCommand(args, cwd, shell)
-  stderr = subprocess.STDOUT if merge_stderr else subprocess.PIPE
-  pipe = Popen(
-      args,
-      stdout=subprocess.PIPE,
-      stderr=stderr,
-      shell=shell,
-      cwd=cwd,
-      env=env)
+  pipe = Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+               shell=shell, cwd=cwd, env=env)
   stdout, stderr = pipe.communicate()
   return (pipe.returncode, stdout, stderr)
 
@@ -315,17 +249,9 @@ class TimeoutError(base_error.BaseError):
     return self._output
 
 
-def _read_and_decode(fd, buffer_size):
-  data = os.read(fd, buffer_size)
-  if data and six.PY3:
-    data = data.decode('utf-8', errors='ignore')
-  return data
-
-def _IterProcessStdoutFcntl(process,
-                            iter_timeout=None,
-                            timeout=None,
-                            buffer_size=4096,
-                            poll_interval=1):
+def _IterProcessStdoutFcntl(
+    process, iter_timeout=None, timeout=None, buffer_size=4096,
+    poll_interval=1):
   """An fcntl-based implementation of _IterProcessStdout."""
   # pylint: disable=too-many-nested-blocks
   import fcntl
@@ -346,15 +272,16 @@ def _IterProcessStdoutFcntl(process,
         iter_end_time = time.time() + iter_timeout
 
       if iter_end_time:
-        iter_aware_poll_interval = min(poll_interval,
-                                       max(0, iter_end_time - time.time()))
+        iter_aware_poll_interval = min(
+            poll_interval,
+            max(0, iter_end_time - time.time()))
       else:
         iter_aware_poll_interval = poll_interval
 
-      read_fds, _, _ = select.select([child_fd], [], [],
-                                     iter_aware_poll_interval)
+      read_fds, _, _ = select.select(
+          [child_fd], [], [], iter_aware_poll_interval)
       if child_fd in read_fds:
-        data = _read_and_decode(child_fd, buffer_size)
+        data = os.read(child_fd, buffer_size)
         if not data:
           break
         yield data
@@ -363,10 +290,10 @@ def _IterProcessStdoutFcntl(process,
         # If process is closed, keep checking for output data (because of timing
         # issues).
         while True:
-          read_fds, _, _ = select.select([child_fd], [], [],
-                                         iter_aware_poll_interval)
+          read_fds, _, _ = select.select(
+              [child_fd], [], [], iter_aware_poll_interval)
           if child_fd in read_fds:
-            data = _read_and_decode(child_fd, buffer_size)
+            data = os.read(child_fd, buffer_size)
             if data:
               yield data
               continue
@@ -383,11 +310,9 @@ def _IterProcessStdoutFcntl(process,
     process.wait()
 
 
-def _IterProcessStdoutQueue(process,
-                            iter_timeout=None,
-                            timeout=None,
-                            buffer_size=4096,
-                            poll_interval=1):
+def _IterProcessStdoutQueue(
+    process, iter_timeout=None, timeout=None, buffer_size=4096,
+    poll_interval=1):
   """A Queue.Queue-based implementation of _IterProcessStdout.
 
   TODO(jbudorick): Evaluate whether this is a suitable replacement for
@@ -403,7 +328,7 @@ def _IterProcessStdoutQueue(process,
     # TODO(jbudorick): Pick an appropriate read size here.
     while True:
       try:
-        output_chunk = _read_and_decode(process.stdout.fileno(), buffer_size)
+        output_chunk = os.read(process.stdout.fileno(), buffer_size)
       except IOError:
         break
       stdout_queue.put(output_chunk, True)
@@ -438,8 +363,10 @@ def _IterProcessStdoutQueue(process,
     reader_thread.join()
 
 
-_IterProcessStdout = (_IterProcessStdoutQueue
-                      if sys.platform == 'win32' else _IterProcessStdoutFcntl)
+_IterProcessStdout = (
+    _IterProcessStdoutQueue
+    if sys.platform == 'win32'
+    else _IterProcessStdoutFcntl)
 """Iterate over a process's stdout.
 
 This is intentionally not public.
@@ -463,12 +390,8 @@ Yields:
 """
 
 
-def GetCmdStatusAndOutputWithTimeout(args,
-                                     timeout,
-                                     cwd=None,
-                                     shell=False,
-                                     logfile=None,
-                                     env=None):
+def GetCmdStatusAndOutputWithTimeout(args, timeout, cwd=None, shell=False,
+                                     logfile=None, env=None):
   """Executes a subprocess with a timeout.
 
   Args:
@@ -490,14 +413,9 @@ def GetCmdStatusAndOutputWithTimeout(args,
     TimeoutError on timeout.
   """
   _ValidateAndLogCommand(args, cwd, shell)
-  output = six.StringIO()
-  process = Popen(
-      args,
-      cwd=cwd,
-      shell=shell,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-      env=env)
+  output = StringIO.StringIO()
+  process = Popen(args, cwd=cwd, shell=shell, stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT, env=env)
   try:
     for data in _IterProcessStdout(process, timeout=timeout):
       if logfile:
@@ -512,13 +430,8 @@ def GetCmdStatusAndOutputWithTimeout(args,
   return process.returncode, str_output
 
 
-def IterCmdOutputLines(args,
-                       iter_timeout=None,
-                       timeout=None,
-                       cwd=None,
-                       shell=False,
-                       env=None,
-                       check_status=True):
+def IterCmdOutputLines(args, iter_timeout=None, timeout=None, cwd=None,
+                       shell=False, env=None, check_status=True):
   """Executes a subprocess and continuously yields lines from its output.
 
   Args:
@@ -542,25 +455,13 @@ def IterCmdOutputLines(args,
       non-zero exit status.
   """
   cmd = _ValidateAndLogCommand(args, cwd, shell)
-  process = Popen(
-      args,
-      cwd=cwd,
-      shell=shell,
-      env=env,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT)
+  process = Popen(args, cwd=cwd, shell=shell, env=env,
+                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
   return _IterCmdOutputLines(
-      process,
-      cmd,
-      iter_timeout=iter_timeout,
-      timeout=timeout,
+      process, cmd, iter_timeout=iter_timeout, timeout=timeout,
       check_status=check_status)
 
-
-def _IterCmdOutputLines(process,
-                        cmd,
-                        iter_timeout=None,
-                        timeout=None,
+def _IterCmdOutputLines(process, cmd, iter_timeout=None, timeout=None,
                         check_status=True):
   buffer_output = ''
 
@@ -570,8 +471,8 @@ def _IterCmdOutputLines(process,
     iter_end = time.time() + iter_timeout
     cur_iter_timeout = iter_timeout
 
-  for data in _IterProcessStdout(
-      process, iter_timeout=cur_iter_timeout, timeout=timeout):
+  for data in _IterProcessStdout(process, iter_timeout=cur_iter_timeout,
+                                 timeout=timeout):
     if iter_timeout:
       # Check whether the current iteration has timed out.
       cur_iter_timeout = iter_end - time.time()

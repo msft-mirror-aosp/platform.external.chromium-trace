@@ -9,9 +9,8 @@ from __future__ import print_function
 
 import unittest
 
-from six.moves import range # pylint: disable=redefined-builtin
-
 from py_utils import expectations_parser
+from six.moves import range # pylint: disable=redefined-builtin
 
 
 class TestExpectationParserTest(unittest.TestCase):

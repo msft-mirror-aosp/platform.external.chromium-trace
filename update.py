@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 import optparse
 import os
@@ -13,7 +13,7 @@ PACKAGE_DIRS = [
     'devil',
     'systrace',
     'third_party/pyserial',
-    'third_party/polymer',
+    'third_party/zipfile',
     'tracing/tracing/trace_data',
 ]
 PACKAGE_FILES = [

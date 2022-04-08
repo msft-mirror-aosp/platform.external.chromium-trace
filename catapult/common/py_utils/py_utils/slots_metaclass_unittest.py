@@ -8,9 +8,8 @@ from __future__ import print_function
 
 import unittest
 
-import six
-
 from py_utils import slots_metaclass
+import six
 
 
 class SlotsMetaclassUnittest(unittest.TestCase):

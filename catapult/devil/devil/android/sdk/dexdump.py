@@ -2,11 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import six
-
 from devil.android.sdk import build_tools
 from devil.utils import cmd_helper
 from devil.utils import lazy
+
 
 _dexdump_path = lazy.WeakConstant(lambda: build_tools.GetPath('dexdump'))
 
@@ -22,10 +21,11 @@ def DexDump(dexfiles, file_summary=False):
     An iterable over the output lines.
   """
   # TODO(jbudorick): Add support for more options as necessary.
-  if isinstance(dexfiles, six.string_types):
+  if isinstance(dexfiles, basestring):
     dexfiles = [dexfiles]
   args = [_dexdump_path.read()] + dexfiles
   if file_summary:
     args.append('-f')
 
   return cmd_helper.IterCmdOutputLines(args)
+

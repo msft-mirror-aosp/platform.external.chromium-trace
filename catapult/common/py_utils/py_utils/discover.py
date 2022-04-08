@@ -101,18 +101,20 @@ def DiscoverClasses(start_dir,
   for module in modules:
     new_classes = DiscoverClassesInModule(
         module, base_class, index_by_class_name, directly_constructable)
-    # TODO(crbug.com/548652): we should remove index_by_class_name once
+    # TODO(nednguyen): we should remove index_by_class_name once
     # benchmark_smoke_unittest in chromium/src/tools/perf no longer relied
     # naming collisions to reduce the number of smoked benchmark tests.
+    # crbug.com/548652
     if index_by_class_name:
       AssertNoKeyConflicts(classes, new_classes)
     classes = dict(list(classes.items()) + list(new_classes.items()))
   return classes
 
 
-# TODO(crbug.com/548652): we should remove index_by_class_name once
+# TODO(nednguyen): we should remove index_by_class_name once
 # benchmark_smoke_unittest in chromium/src/tools/perf no longer relied
 # naming collisions to reduce the number of smoked benchmark tests.
+# crbug.com/548652
 def DiscoverClassesInModule(module,
                             base_class,
                             index_by_class_name=False,

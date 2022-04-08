@@ -2,6 +2,7 @@
 # Copyright 2013 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """Tests for the cmd_helper module."""
 
 import unittest
@@ -17,11 +18,14 @@ with devil_env.SysPath(devil_env.PYMOCK_PATH):
 
 
 class CmdHelperSingleQuoteTest(unittest.TestCase):
+
   def testSingleQuote_basic(self):
-    self.assertEquals('hello', cmd_helper.SingleQuote('hello'))
+    self.assertEquals('hello',
+                      cmd_helper.SingleQuote('hello'))
 
   def testSingleQuote_withSpaces(self):
-    self.assertEquals("'hello world'", cmd_helper.SingleQuote('hello world'))
+    self.assertEquals("'hello world'",
+                      cmd_helper.SingleQuote('hello world'))
 
   def testSingleQuote_withUnsafeChars(self):
     self.assertEquals("""'hello'"'"'; rm -rf /'""",
@@ -33,24 +37,16 @@ class CmdHelperSingleQuoteTest(unittest.TestCase):
     self.assertEquals(test_string,
                       cmd_helper.GetCmdOutput(cmd, shell=True).rstrip())
 
-class CmdHelperGetCmdStatusAndOutputTest(unittest.TestCase):
-  def testGetCmdStatusAndOutput_success(self):
-    cmd = 'echo "Hello World"'
-    status, output = cmd_helper.GetCmdStatusAndOutput(cmd, shell=True)
-    self.assertEqual(status, 0)
-    self.assertEqual(output.rstrip(), "Hello World")
-
-  def testGetCmdStatusAndOutput_unicode(self):
-    # pylint: disable=no-self-use
-    cmd = 'echo "\x80\x31Hello World\n"'
-    cmd_helper.GetCmdStatusAndOutput(cmd, shell=True)
 
 class CmdHelperDoubleQuoteTest(unittest.TestCase):
+
   def testDoubleQuote_basic(self):
-    self.assertEquals('hello', cmd_helper.DoubleQuote('hello'))
+    self.assertEquals('hello',
+                      cmd_helper.DoubleQuote('hello'))
 
   def testDoubleQuote_withSpaces(self):
-    self.assertEquals('"hello world"', cmd_helper.DoubleQuote('hello world'))
+    self.assertEquals('"hello world"',
+                      cmd_helper.DoubleQuote('hello world'))
 
   def testDoubleQuote_withUnsafeChars(self):
     self.assertEquals('''"hello\\"; rm -rf /"''',
@@ -64,34 +60,33 @@ class CmdHelperDoubleQuoteTest(unittest.TestCase):
 
 
 class CmdHelperShinkToSnippetTest(unittest.TestCase):
+
   def testShrinkToSnippet_noArgs(self):
-    self.assertEquals('foo', cmd_helper.ShrinkToSnippet(['foo'], 'a', 'bar'))
+    self.assertEquals('foo',
+        cmd_helper.ShrinkToSnippet(['foo'], 'a', 'bar'))
     self.assertEquals("'foo foo'",
-                      cmd_helper.ShrinkToSnippet(['foo foo'], 'a', 'bar'))
+        cmd_helper.ShrinkToSnippet(['foo foo'], 'a', 'bar'))
     self.assertEquals('"$a"\' bar\'',
-                      cmd_helper.ShrinkToSnippet(['foo bar'], 'a', 'foo'))
+        cmd_helper.ShrinkToSnippet(['foo bar'], 'a', 'foo'))
     self.assertEquals('\'foo \'"$a"',
-                      cmd_helper.ShrinkToSnippet(['foo bar'], 'a', 'bar'))
+        cmd_helper.ShrinkToSnippet(['foo bar'], 'a', 'bar'))
     self.assertEquals('foo"$a"',
-                      cmd_helper.ShrinkToSnippet(['foobar'], 'a', 'bar'))
+        cmd_helper.ShrinkToSnippet(['foobar'], 'a', 'bar'))
 
   def testShrinkToSnippet_singleArg(self):
     self.assertEquals("foo ''",
-                      cmd_helper.ShrinkToSnippet(['foo', ''], 'a', 'bar'))
+        cmd_helper.ShrinkToSnippet(['foo', ''], 'a', 'bar'))
     self.assertEquals("foo foo",
-                      cmd_helper.ShrinkToSnippet(['foo', 'foo'], 'a', 'bar'))
+        cmd_helper.ShrinkToSnippet(['foo', 'foo'], 'a', 'bar'))
     self.assertEquals('"$a" "$a"',
-                      cmd_helper.ShrinkToSnippet(['foo', 'foo'], 'a', 'foo'))
+        cmd_helper.ShrinkToSnippet(['foo', 'foo'], 'a', 'foo'))
     self.assertEquals('foo "$a""$a"',
-                      cmd_helper.ShrinkToSnippet(['foo', 'barbar'], 'a', 'bar'))
-    self.assertEquals(
-        'foo "$a"\' \'"$a"',
+        cmd_helper.ShrinkToSnippet(['foo', 'barbar'], 'a', 'bar'))
+    self.assertEquals('foo "$a"\' \'"$a"',
         cmd_helper.ShrinkToSnippet(['foo', 'bar bar'], 'a', 'bar'))
-    self.assertEquals(
-        'foo "$a""$a"\' \'',
+    self.assertEquals('foo "$a""$a"\' \'',
         cmd_helper.ShrinkToSnippet(['foo', 'barbar '], 'a', 'bar'))
-    self.assertEquals(
-        'foo \' \'"$a""$a"\' \'',
+    self.assertEquals('foo \' \'"$a""$a"\' \'',
         cmd_helper.ShrinkToSnippet(['foo', ' barbar '], 'a', 'bar'))
 
 
@@ -99,6 +94,7 @@ _DEFAULT = 'DEFAULT'
 
 
 class _ProcessOutputEvent(object):
+
   def __init__(self, select_fds=_DEFAULT, read_contents=None, ts=_DEFAULT):
     self.select_fds = select_fds
     self.read_contents = read_contents
@@ -106,6 +102,7 @@ class _ProcessOutputEvent(object):
 
 
 class _MockProcess(object):
+
   def __init__(self, output_sequence=None, return_value=0):
 
     # Arbitrary.
@@ -133,7 +130,8 @@ class _MockProcess(object):
 
     # Use an leading element to make the iteration logic work.
     initial_seq_element = _ProcessOutputEvent(
-        _DEFAULT, '', output_sequence[0].ts if output_sequence else _DEFAULT)
+        _DEFAULT, '',
+        output_sequence[0].ts if output_sequence else _DEFAULT)
     output_sequence.insert(0, initial_seq_element)
 
     for o in output_sequence:
@@ -161,10 +159,10 @@ class _MockProcess(object):
       else:
         self._output_seq_index += 1
       if self._output_seq_index < len(self._output_sequence):
-        return (self._output_sequence[self._output_seq_index].select_fds, None,
-                None)
+        return (self._output_sequence[self._output_seq_index].select_fds,
+                None, None)
       else:
-        return ([], None, None)
+        return([], None, None)
 
     def time_side_effect(*_args, **_kwargs):
       return self._output_sequence[self._output_seq_index].ts
@@ -181,9 +179,9 @@ class _MockProcess(object):
 
     # Set up but *do not start* the mocks.
     self._mocks = [
-        mock.patch('os.read', new=mock_read),
-        mock.patch('select.select', new=mock_select),
-        mock.patch('time.time', new=mock_time),
+      mock.patch('os.read', new=mock_read),
+      mock.patch('select.select', new=mock_select),
+      mock.patch('time.time', new=mock_time),
     ]
     if sys.platform != 'win32':
       self._mocks.append(mock.patch('fcntl.fcntl'))
@@ -206,7 +204,7 @@ class CmdHelperIterCmdOutputLinesTest(unittest.TestCase):
   # pylint: disable=protected-access
 
   _SIMPLE_OUTPUT_SEQUENCE = [
-      _ProcessOutputEvent(read_contents=b'1\n2\n'),
+    _ProcessOutputEvent(read_contents='1\n2\n'),
   ]
 
   def testIterCmdOutputLines_success(self):
@@ -216,37 +214,27 @@ class CmdHelperIterCmdOutputLinesTest(unittest.TestCase):
           cmd_helper._IterCmdOutputLines(mock_proc, 'mock_proc'), 1):
         self.assertEquals(num, int(line))
 
-  def testIterCmdOutputLines_unicode(self):
-    output_sequence = [
-        _ProcessOutputEvent(read_contents=b'\x80\x31\nHello\n\xE2\x98\xA0')
-    ]
-    with _MockProcess(output_sequence=output_sequence) as mock_proc:
-      lines = list(cmd_helper._IterCmdOutputLines(mock_proc, 'mock_proc'))
-      self.assertEquals(lines[1], "Hello")
-
   def testIterCmdOutputLines_exitStatusFail(self):
     with self.assertRaises(subprocess.CalledProcessError):
-      with _MockProcess(
-          output_sequence=self._SIMPLE_OUTPUT_SEQUENCE,
-          return_value=1) as mock_proc:
+      with _MockProcess(output_sequence=self._SIMPLE_OUTPUT_SEQUENCE,
+                        return_value=1) as mock_proc:
         for num, line in enumerate(
             cmd_helper._IterCmdOutputLines(mock_proc, 'mock_proc'), 1):
           self.assertEquals(num, int(line))
         # after reading all the output we get an exit status of 1
 
   def testIterCmdOutputLines_exitStatusIgnored(self):
-    with _MockProcess(
-        output_sequence=self._SIMPLE_OUTPUT_SEQUENCE,
-        return_value=1) as mock_proc:
+    with _MockProcess(output_sequence=self._SIMPLE_OUTPUT_SEQUENCE,
+                      return_value=1) as mock_proc:
       for num, line in enumerate(
           cmd_helper._IterCmdOutputLines(
-              mock_proc, 'mock_proc', check_status=False), 1):
+              mock_proc, 'mock_proc', check_status=False),
+          1):
         self.assertEquals(num, int(line))
 
   def testIterCmdOutputLines_exitStatusSkipped(self):
-    with _MockProcess(
-        output_sequence=self._SIMPLE_OUTPUT_SEQUENCE,
-        return_value=1) as mock_proc:
+    with _MockProcess(output_sequence=self._SIMPLE_OUTPUT_SEQUENCE,
+                      return_value=1) as mock_proc:
       for num, line in enumerate(
           cmd_helper._IterCmdOutputLines(mock_proc, 'mock_proc'), 1):
         self.assertEquals(num, int(line))
@@ -257,14 +245,14 @@ class CmdHelperIterCmdOutputLinesTest(unittest.TestCase):
 
   def testIterCmdOutputLines_delay(self):
     output_sequence = [
-        _ProcessOutputEvent(read_contents=b'1\n2\n', ts=1),
-        _ProcessOutputEvent(read_contents=None, ts=2),
-        _ProcessOutputEvent(read_contents=b'Awake', ts=10),
+      _ProcessOutputEvent(read_contents='1\n2\n', ts=1),
+      _ProcessOutputEvent(read_contents=None, ts=2),
+      _ProcessOutputEvent(read_contents='Awake', ts=10),
     ]
     with _MockProcess(output_sequence=output_sequence) as mock_proc:
       for num, line in enumerate(
-          cmd_helper._IterCmdOutputLines(
-              mock_proc, 'mock_proc', iter_timeout=5), 1):
+          cmd_helper._IterCmdOutputLines(mock_proc, 'mock_proc',
+                                         iter_timeout=5), 1):
         if num <= 2:
           self.assertEquals(num, int(line))
         elif num == 3:

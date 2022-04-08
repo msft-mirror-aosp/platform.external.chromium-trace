@@ -1,6 +1,7 @@
 # Copyright 2013 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """A temp file that automatically gets pushed and deleted from a device."""
 
 # pylint: disable=W0622
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _GenerateName(prefix, suffix, dir):
-  random_hex = hex(random.randint(0, 2**52))[2:]
+  random_hex = hex(random.randint(0, 2 ** 52))[2:]
   return posixpath.join(dir, '%s-%s%s' % (prefix, random_hex, suffix))
 
 
@@ -54,17 +55,15 @@ class DeviceTempFile(object):
 
   def close(self):
     """Deletes the temporary file from the device."""
-
     # ignore exception if the file is already gone.
     def delete_temporary_file():
       try:
-        self._adb.Shell(
-            'rm -f %s' % self.name_quoted, expect_status=None, retries=0)
+        self._adb.Shell('rm -f %s' % self.name_quoted, expect_status=None)
       except base_error.BaseError as e:
         # We don't really care, and stack traces clog up the log.
         # Log a warning and move on.
-        logger.warning('Failed to delete temporary file %s: %s', self.name,
-                       str(e))
+        logger.warning('Failed to delete temporary file %s: %s',
+                        self.name, str(e))
 
     # It shouldn't matter when the temp file gets deleted, so do so
     # asynchronously.
@@ -102,7 +101,6 @@ class NamedDeviceTemporaryDirectory(object):
 
   def close(self):
     """Deletes the temporary directory from the device."""
-
     def delete_temporary_dir():
       try:
         self._adb.Shell('rm -rf %s' % self.name, expect_status=None)

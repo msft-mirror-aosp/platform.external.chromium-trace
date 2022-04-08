@@ -1,6 +1,7 @@
 # Copyright 2014 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 """Manages intents and associated information.
 
 This is generally intended to be used with functions that calls Android's
@@ -24,15 +25,10 @@ def _bitwise_or(flags):
 
 
 class Intent(object):
-  def __init__(self,
-               action='android.intent.action.VIEW',
-               activity=None,
-               category=None,
-               component=None,
-               data=None,
-               extras=None,
-               flags=None,
-               package=None):
+
+  def __init__(self, action='android.intent.action.VIEW', activity=None,
+               category=None, component=None, data=None, extras=None,
+               flags=None, package=None):
     """Creates an Intent.
 
     Args:
@@ -116,7 +112,7 @@ class Intent(object):
     if self.flags:
       args.extend(['-f', self.flags])
     if self.extras:
-      for key, value in self.extras.items():
+      for key, value in self.extras.iteritems():
         if value is None:
           args.extend(['--esn', key])
         elif isinstance(value, str):

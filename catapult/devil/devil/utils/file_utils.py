@@ -27,3 +27,5 @@ def MergeFiles(dest_file, source_files):
     except OSError:
       pass
     raise e
+
+

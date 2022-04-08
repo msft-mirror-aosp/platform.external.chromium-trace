@@ -16,6 +16,7 @@ from devil.utils import markdown
 
 
 class MarkdownTest(unittest.TestCase):
+
   def testBold(self):
     raw = 'foo'
     self.assertEquals('**foo**', markdown.md_bold(raw))
@@ -84,13 +85,13 @@ class MarkdownTest(unittest.TestCase):
 
   def testInlineCode(self):
     raw = 'devil.utils.markdown_test'
-    self.assertEquals('`devil.utils.markdown_test`',
-                      markdown.md_inline_code(raw))
+    self.assertEquals(
+        '`devil.utils.markdown_test`', markdown.md_inline_code(raw))
 
   def testInlineCodeContainsTicks(self):
     raw = 'this contains `backticks`'
-    self.assertEquals('`this contains \\`backticks\\``',
-                      markdown.md_inline_code(raw))
+    self.assertEquals(
+        '`this contains \\`backticks\\``', markdown.md_inline_code(raw))
 
   def testItalic(self):
     raw = 'bar'
@@ -103,9 +104,10 @@ class MarkdownTest(unittest.TestCase):
   def testLink(self):
     link_text = 'Devil home'
     link_target = (
-        'https://chromium.googlesource.com/catapult.git/+/HEAD/devil')
-    expected = ('[Devil home]'
-                '(https://chromium.googlesource.com/catapult.git/+/HEAD/devil)')
+        'https://github.com/catapult-project/catapult/tree/master/devil')
+    expected = (
+        '[Devil home]'
+        '(https://github.com/catapult-project/catapult/tree/master/devil)')
     self.assertEquals(expected, markdown.md_link(link_text, link_target))
 
   def testLinkTextContainsBracket(self):

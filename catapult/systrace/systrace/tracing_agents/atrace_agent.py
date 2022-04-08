@@ -28,9 +28,8 @@ ADB_LARGE_OUTPUT_TIMEOUT = 600
 ATRACE_BASE_ARGS = ['atrace']
 # If a custom list of categories is not specified, traces will include
 # these categories (if available on the device).
-DEFAULT_CATEGORIES = 'am,binder_driver,camera,dalvik,freq,'\
-                     'gfx,hal,idle,input,memory,memreclaim,'\
-                     'res,sched,sync,view,webview,wm,workq'
+DEFAULT_CATEGORIES = 'sched,freq,gfx,view,dalvik,webview,'\
+                     'input,disk,am,wm,rs,binder_driver'
 # The command to list trace categories.
 LIST_CATEGORIES_ARGS = ATRACE_BASE_ARGS + ['--list_categories']
 # Minimum number of seconds between displaying status updates.
@@ -104,8 +103,7 @@ def try_create_agent(config):
            'Your device SDK version is %d.' % device_sdk_version)
     return None
 
-  return AtraceAgent(device_sdk_version,
-                     util.get_tracing_path(config.device_serial_number))
+  return AtraceAgent(device_sdk_version)
 
 def _construct_extra_atrace_args(config, categories):
   """Construct extra arguments (-a, -k, categories) for atrace command.
@@ -159,10 +157,9 @@ def _construct_atrace_args(config, categories):
 
 class AtraceAgent(tracing_agents.TracingAgent):
 
-  def __init__(self, device_sdk_version, tracing_path):
+  def __init__(self, device_sdk_version):
     super(AtraceAgent, self).__init__()
     self._device_sdk_version = device_sdk_version
-    self._tracing_path = tracing_path
     self._adb = None
     self._trace_data = None
     self._tracer_args = None
@@ -234,7 +231,7 @@ class AtraceAgent(tracing_agents.TracingAgent):
         sync_id: ID string for clock sync marker.
     """
     cmd = 'echo trace_event_clock_sync: name=%s >' \
-        ' %s/trace_marker' % (sync_id, self._tracing_path)
+        ' /sys/kernel/debug/tracing/trace_marker' % sync_id
     with self._device_utils.adb.PersistentShell(
         self._device_serial_number) as shell:
       t1 = trace_time_module.Now()
@@ -248,7 +245,7 @@ class AtraceAgent(tracing_agents.TracingAgent):
     doesn't stop tracing and clears trace buffer before dumping it rendering
     results unusable."""
     if self._device_sdk_version < version_codes.MARSHMALLOW:
-      is_trace_enabled_file = '%s/tracing_on' % self._tracing_path
+      is_trace_enabled_file = '/sys/kernel/debug/tracing/tracing_on'
       # Stop tracing first so new data won't arrive while dump is performed (it
       # may take a non-trivial time and tracing buffer may overflow).
       self._device_utils.WriteFile(is_trace_enabled_file, '0')
